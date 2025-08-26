@@ -1,0 +1,34 @@
+import sqlite3
+import os
+import types
+
+config = types.ModuleType("config")
+with open("rakuspace.cfg", "r") as f:
+    exec(f.read(), config.__dict__)
+
+DB_PATH = config.DB_PATH
+
+def init_db():
+    # Remove existing DB if it exists
+    if not os.path.exists(DB_PATH):
+
+        conn = sqlite3.connect(DB_PATH)
+        c = conn.cursor()
+
+        # Create the users table
+        c.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                userid INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                streamkey TEXT NOT NULL
+            )
+        """)
+
+        conn.commit()
+        conn.close()
+        print(f"Database initialized at {DB_PATH}")
+    else:
+        print(f"Database {DB_PATH} already exists, remove or replace it. Exiting.")
+
+if __name__ == "__main__":
+    init_db()

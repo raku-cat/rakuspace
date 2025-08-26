@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<Server version="8">
+	<Name>rakuspace-origin</Name>
+	<Type>origin</Type>
+	<IP>0.0.0.0</IP>
+	<PrivacyProtection>false</PrivacyProtection>
+
+	<Modules>
+        <HTTP2>
+			<Enable>false</Enable>
+		</HTTP2>
+		<LLHLS>
+			<Enable>false</Enable>
+		</LLHLS>
+	</Modules>
+    
+    
+	<Bind>
+		<Providers>
+			<RTMP>
+				<Port>${env:OME_RTMP_PROV_PORT:1935}</Port>
+				<WorkerCount>1</WorkerCount>
+			</RTMP>
+		</Providers>
+
+		<Publishers>
+			<!-- The OVT is protocol for ORIGIN-EDGE -->
+			<OVT>
+				<Port>${env:OME_ORIGIN_PORT:9000}</Port>
+				<WorkerCount>1</WorkerCount>
+			</OVT>
+		</Publishers>
+	</Bind>
+
+
+	<VirtualHosts>
+		<VirtualHost>
+			<Name>rakuspace-origin</Name>
+			
+			<!-- Settings for multi ip/domain and TLS -->
+			<Host>
+				<Names>
+					<Name>*</Name>
+				</Names>
+			</Host>
+
+			<!-- Default CORS Settings -->
+			<CrossDomains>
+				<Url>*</Url>
+			</CrossDomains>
+
+			<!-- Settings for applications -->
+			<AdmissionWebhooks>
+				<ControlServerUrl>http://0.0.0.0:6868/verify</ControlServerUrl>
+				<Timeout>3000</Timeout>
+				<Enables>
+					<Providers>rtmp</Providers>
+				</Enables>
+			</AdmissionWebhooks>
+			<Applications>
+				<Application>
+					<Name>rakuspace</Name>
+					<!-- Application type (live/vod) -->
+					<Type>live</Type>
+					<OutputProfiles>
+
+						<OutputProfile>
+							<Name>bypass_stream</Name>
+							<OutputStreamName>${OriginStreamName}</OutputStreamName>
+							<Encodes>
+								<Video>
+									<Name>bypass_video</Name>
+									<Bypass>true</Bypass>
+								</Video>
+								<Audio>
+									<Name>aac_audio</Name>
+									<Codec>aac</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>
+								</Audio>								
+								<Audio>
+									<Name>opus_audio</Name>
+									<Codec>opus</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>									
+								</Audio>
+							</Encodes>
+						</OutputProfile>
+					</OutputProfiles>
+					<Providers>
+						<RTMP />
+					</Providers>
+					<Publishers>
+						<AppWorkerCount>1</AppWorkerCount>
+						<StreamWorkerCount>8</StreamWorkerCount>
+						<OVT />
+					</Publishers>
+				</Application>
+
+			</Applications>
+		</VirtualHost>
+	</VirtualHosts>
+
+
+</Server>

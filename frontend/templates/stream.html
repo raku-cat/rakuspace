@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Streaming Info</title>
+</head>
+<body>
+  <h1>Streaming Info for {{ username }}</h1>
+  <p><b>RTMP URL:</b> <input type="text" value="{{ rtmp_url }}" readonly size="50"></p>
+  <p><b>Stream Key:</b> <input type="text" value="{{ userid }}_{{ streamkey }}" readonly size="50"></p>
+  <form method="post" action="{{ url_for('regen_key') }}">
+      <button type="submit">Regenerate Key</button>
+  </form>
+</body>
+</html>

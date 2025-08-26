@@ -1,0 +1,22 @@
+# Host of your RTMP provider (where users will be streaming to).
+OME_PROVIDER_HOST = 'localhost'
+OME_RTMP_PROVIDER_PORT = '1935'
+# App name as configured in OME
+OME_APP_NAME = 'app'
+# Host of your webrtc publisher, if you aren't using a separate edge and
+# origin this will probbably be the same as your provider above.
+OME_PUBLISHER_HOST = 'localhost'
+OME_PUBLISHER_PORT = '3334'
+
+# Where flask will bind to using its built in debug server, only used
+# when running the debug server, gunicorn etc will not use this.
+SITE_HOST='localhost'
+SITE_PORT='5000'
+
+# Path to user db file including file name, defaults to same directory
+# as the script.
+DB_PATH = 'users.db'
+
+# Enable reading headers from http basic auth, put behind a default 
+# disabled option due to security risks.
+BASICAUTH_ENABLED = 'False'

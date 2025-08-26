@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RakuSpace</title>
+</head>
+<body class="flex flex-col items-center justify-center h-screen">
+  <h1>Enter a stream name</h1>
+  <form id="stream-form">
+    <input id="stream-input" type="text" placeholder="stream name">
+    <button type="submit">Watch</button>
+  </form>
+
+  <script>
+    document.getElementById("stream-form").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const name = document.getElementById("stream-input").value.trim();
+      if(name) {
+        window.location.href = "/" + encodeURIComponent(name);
+      }
+    });
+  </script>
+</body>
+</html>

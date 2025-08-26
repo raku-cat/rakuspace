@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<Server version="8">
+    <Name>rakuspace</Name>
+    <Type>origin</Type>
+    <IP>0.0.0.0</IP>
+    <PrivacyProtection>false</PrivacyProtection>
+    <StunServer>stun.ovenmediaengine.com:13478</StunServer>
+    
+    <Modules>
+        <HTTP2>
+            <Enable>true</Enable>
+        </HTTP2>
+        <LLHLS>
+            <Enable>false</Enable>
+        </LLHLS>
+    </Modules>
+    
+    
+    <Bind>
+        <Providers>
+			<RTMP>
+				<Port>${env:OME_RTMP_PROV_PORT:1935}</Port>
+				<WorkerCount>1</WorkerCount>
+			</RTMP>
+        </Providers>
+    
+        <Publishers>
+            <WebRTC>
+                <Signalling>
+                    <TLSPort>${env:OME_WEBRTC_SIGNALLING_TLS_PORT:3334}</TLSPort>
+                    <WorkerCount>1</WorkerCount>
+                </Signalling>
+                    <IceCandidates>
+                        <IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
+                        <TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
+                        <TcpForce>false</TcpForce>
+                        <TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+                    </IceCandidates>
+            </WebRTC>
+        </Publishers>
+    </Bind>
+    
+    
+    <VirtualHosts>
+        <VirtualHost>
+            <Name>rakuspace</Name>
+    
+            <Host>
+                <Names>
+                    <Name>live.example.com</Name>
+                </Names>
+                <TLS>
+                    <CertPath>/opt/ovenmediaengine/bin/cert/live/example.com/cert.pem</CertPath>
+                    <KeyPath>/opt/ovenmediaengine/bin/cert/live/example.com/privkey.pem</KeyPath>
+                    <ChainCertPath>/opt/ovenmediaengine/bin/cert/live/example.com/chain.pem</ChainCertPath>
+                </TLS>
+            </Host>
+    
+            <CrossDomains>
+                <Url>*</Url>
+            </CrossDomains>
+			<AdmissionWebhooks>
+				<ControlServerUrl>http://0.0.0.0:6868/verify</ControlServerUrl>
+				<Timeout>3000</Timeout>
+				<Enables>
+					<Providers>rtmp</Providers>
+				</Enables>
+			</AdmissionWebhooks>    
+
+            <!-- Settings for applications -->
+ 			<Applications>
+				<Application>
+					<Name>rakuspace</Name>
+					<!-- Application type (live/vod) -->
+					<Type>live</Type>
+					<OutputProfiles>
+
+						<OutputProfile>
+							<Name>bypass_stream</Name>
+							<OutputStreamName>${OriginStreamName}</OutputStreamName>
+							<Encodes>
+								<Video>
+									<Name>bypass_video</Name>
+									<Bypass>true</Bypass>
+								</Video>
+								<Audio>
+									<Name>aac_audio</Name>
+									<Codec>aac</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>
+								</Audio>								
+								<Audio>
+									<Name>opus_audio</Name>
+									<Codec>opus</Codec>
+									<Bitrate>128000</Bitrate>
+									<Samplerate>48000</Samplerate>
+									<Channel>2</Channel>
+									<BypassIfMatch>
+										<Codec>eq</Codec>
+									</BypassIfMatch>									
+								</Audio>
+							</Encodes>
+						</OutputProfile>
+					</OutputProfiles>
+					<Providers>
+						<RTMP />
+					</Providers>
+                    <Publishers>
+                        <WebRTC>
+                            <Timeout>30000</Timeout>
+                            <Rtx>false</Rtx>
+                            <Ulpfec>false</Ulpfec>
+                            <JitterBuffer>false</JitterBuffer>
+                            <CreateDefaultPlaylist>true</CreateDefaultPlaylist>
+                        </WebRTC>
+                    </Publishers>
+                </Application>
+            </Applications>
+    
+        </VirtualHost>
+    </VirtualHosts>
+
+
+</Server>

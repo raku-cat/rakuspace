@@ -1,0 +1,17 @@
+[Unit]
+Description=RakuSpace OME frontend
+After=ovenmediaengine.service
+
+
+[Container]
+Image=rakuspace:latest
+
+PublishPort=6868:6868
+Volume=rakuspace.cfg:/app/rakuspace.cfg
+Volume=users.db:/app/users.db
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Watching {{ streamname }}</title>
+  <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
+</head>
+<body style="margin:0; background:black; display:flex; align-items:center; justify-content:center; height:100vh;">
+  <div id="player" style="width:100%; height:100%;"></div>
+  <div id="offline" style="position:absolute; color:white; font-size:2em; display:none;">
+    {{ streamname }} is offline
+  </div>
+
+  <script>
+    const streamName = "{{ streamname }}";
+    const host = "{{ OME_PUBLISHER_HOST }}";
+    const port = "{{ OME_PUBLISHER_PORT }}"
+    const appName = "{{ OME_APP_NAME }}";
+
+    const player = OvenPlayer.create("player", {
+      sources: [{
+        type: "webrtc",
+        file: `wss://${host}:${port}/${appName}/${streamName}`
+      }],
+      autoStart: true,
+      disableSeekUI: true,
+      showBigPlayButton: false,
+      expandFullScreenUI: true,
+      
+    });
+
+    const offlineMsg = document.getElementById("offline");
+
+    function setOffline() {
+      offlineMsg.style.display = "block";
+      document.getElementById('player').style.display = "none";
+      retryStream();
+    }
+    function setOnline() {
+      offlineMsg.style.display = "none";
+      document.getElementById('player').style.display = "block";
+    }
+
+    // Listen for events
+    player.on("error", setOffline);
+    player.on("ended", setOffline);
+    player.on("stateChanged", (e) => {
+      if(e.newstate === "playing") setOnline();
+    });
+
+    // Retry logic
+    function retryStream() {
+      setTimeout(() => {
+        player.load([{
+          type: "webrtc",
+          file: `wss://${host}:${port}/${appName}/${streamName}`
+        }]);
+      }, 5000); // retry every 5s
+    }
+  </script>
+</body>
+</html>
