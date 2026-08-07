@@ -27,11 +27,30 @@
     #offline span {
       position: relative;
     }
+    #offline-retry {
+      position: relative;
+      margin-top: 16px;
+      padding: 8px 20px;
+      font-size: 0.5em;
+      color: white;
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    #offline-retry:hover {
+      background: rgba(255, 255, 255, 0.25);
+    }
   </style>
 </head>
 <body style="margin:0; background:black; display:flex; align-items:center; justify-content:center; height:100vh;">
   <div id="player" style="width:100%; height:100%;"></div>
-  <div id="offline"><span>{{ streamname }} is offline</span></div>
+  <div id="offline">
+    <div>
+      <div><span>{{ streamname }} is offline</span></div>
+      <button id="offline-retry" type="button">Try to connect anyway</button>
+    </div>
+  </div>
 
   <script>
     const streamName = "{{ streamname }}";
@@ -119,6 +138,22 @@
         }]);
       }, 3000);
     }
+
+    // Manual escape hatch on the offline overlay itself: the overlay sits on
+    // top of the player and blocks its big-play-button, and before the first
+    // SSE "live" event ever arrives (e.g. right after a server restart, with
+    // a streamer already live) there's no source loaded at all -- nothing
+    // under the overlay to click. This always attempts a connection directly
+    // against OME, independent of our tracked liveState, so the viewer can
+    // recover even if that state is stale or wrong.
+    document.getElementById("offline-retry").addEventListener("click", () => {
+      clearTimeout(localRetryTimer);
+      player.load([{
+        type: "webrtc",
+        file: `wss://${host}:${port}/${appName}/${streamName}`
+      }]);
+      player.play();
+    });
 
     // Drive (re)connect attempts off OME's own publish start/stop events
     // (relayed via /auth/ome into this SSE feed) instead of blindly retrying
