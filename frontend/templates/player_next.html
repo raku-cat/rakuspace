@@ -217,12 +217,7 @@
       if (hls) {
         hls.destroy();
       }
-      hls = new Hls({
-        lowLatencyMode: true,
-        liveSyncDurationCount: 3,
-        liveMaxLatencyDurationCount: 5,
-        maxLiveSyncPlaybackRate: 1.5,
-      });
+      hls = new Hls({ lowLatencyMode: true });
       hls.loadSource(streamUrl);
       hls.attachMedia(video);
 
