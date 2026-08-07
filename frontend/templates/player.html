@@ -34,11 +34,20 @@
 
     const offlineMsg = document.getElementById("offline");
 
+    let liveState = null; // "live" | "offline", set by the /api/live SSE push below
+    let localRetryTimer = null;
+
     function setOffline() {
       offlineMsg.style.display = "block";
-      retryStream();
+      // Only worth retrying on our own if OME still thinks the stream is up
+      // (a transient viewer-side glitch); if OME says offline, there's
+      // nothing to reconnect to until the push below says otherwise.
+      if (liveState === "live") {
+        retryStream();
+      }
     }
     function setOnline() {
+      clearTimeout(localRetryTimer);
       offlineMsg.style.display = "none";
       document.getElementById('player').style.display = "block";
       player.play();
@@ -69,15 +78,36 @@
       if(e.newstate === "loading") checkAutoplay();
     });
 
-    // Retry logic
+    // Retry logic -- only used for transient local errors while OME still
+    // reports the stream as live; see setOffline() above.
     function retryStream() {
-      setTimeout(() => {
+      clearTimeout(localRetryTimer);
+      localRetryTimer = setTimeout(() => {
         player.load([{
           type: "webrtc",
           file: `wss://${host}:${port}/${appName}/${streamName}`
         }]);
-      }, 5000); // retry every 5s
+      }, 3000);
     }
+
+    // Drive (re)connect attempts off OME's own publish start/stop events
+    // (relayed via /auth/ome into this SSE feed) instead of blindly retrying
+    // a dead connection: only load a fresh source when actually told the
+    // stream is live, and stop the instant we're told it isn't.
+    const liveEvents = new EventSource(`/api/live/${streamName}/events`);
+    liveEvents.addEventListener("state", (e) => {
+      const state = e.data;
+      if (state === liveState) return;
+      liveState = state;
+      if (state === "live") {
+        player.load([{
+          type: "webrtc",
+          file: `wss://${host}:${port}/${appName}/${streamName}`
+        }]);
+      } else {
+        setOffline();
+      }
+    });
   </script>
 </body>
 </html>

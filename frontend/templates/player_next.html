@@ -168,22 +168,25 @@
     }
 
     let hls = null;
-    let retryTimer = null;
+    let liveState = null; // "live" | "offline", set by the /api/live SSE push below
+    let localRetryTimer = null;
 
     function setOffline() {
       offlineMsg.style.display = "flex";
       video.style.display = "none";
-      scheduleRetry();
+      // Only worth retrying on our own if OME still thinks the stream is up
+      // (a transient viewer-side glitch); if OME says offline, there's
+      // nothing to reconnect to until the push below says otherwise.
+      if (liveState === "live") {
+        clearTimeout(localRetryTimer);
+        localRetryTimer = setTimeout(loadStream, 3000);
+      }
     }
 
     function setOnline() {
+      clearTimeout(localRetryTimer);
       offlineMsg.style.display = "none";
       video.style.display = "block";
-    }
-
-    function scheduleRetry() {
-      clearTimeout(retryTimer);
-      retryTimer = setTimeout(loadStream, 5000);
     }
 
     function attemptAutoplay() {
@@ -196,7 +199,7 @@
     }
 
     function loadStream() {
-      clearTimeout(retryTimer);
+      clearTimeout(localRetryTimer);
 
       if (video.canPlayType("application/vnd.apple.mpegurl")) {
         // Safari: native HLS support, no hls.js needed.
@@ -298,7 +301,22 @@
 
     updatePlayBtn();
     updateMuteBtn();
-    loadStream();
+
+    // Drive connect attempts entirely off OME's own publish start/stop
+    // events (relayed via /auth/ome into this SSE feed) instead of blindly
+    // polling the manifest: only try to load when we're actually told the
+    // stream is live, and stop trying the instant we're told it isn't.
+    const liveEvents = new EventSource(`/api/live/${streamName}/events`);
+    liveEvents.addEventListener("state", (e) => {
+      const state = e.data;
+      if (state === liveState) return;
+      liveState = state;
+      if (state === "live") {
+        loadStream();
+      } else {
+        setOffline();
+      }
+    });
   </script>
 </body>
 </html>
