@@ -103,6 +103,7 @@
     opacity: 1;
   }
   .tile-close:hover { background: rgba(200, 40, 40, 0.85); }
+  body.edit-mode .tile-close { opacity: 1; }
 
   .tile-empty {
     width: 100%;
@@ -110,25 +111,7 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
     background: repeating-linear-gradient(45deg, #141414, #141414 10px, #191919 10px, #191919 20px);
-  }
-  .plus-icon {
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    border: 2px dashed rgba(255, 255, 255, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 30px;
-    color: rgba(255, 255, 255, 0.6);
-    transition: transform 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-  }
-  .tile-empty:hover .plus-icon {
-    transform: scale(1.08);
-    border-color: rgba(255, 255, 255, 0.85);
-    color: #fff;
   }
 
   .name-form {
@@ -292,7 +275,7 @@
 
   let nextId = 1;
   function makeLeaf(size) {
-    return { type: 'leaf', id: nextId++, name: null, editing: false, justAdded: false, size: size || 1 };
+    return { type: 'leaf', id: nextId++, name: null, justAdded: false, size: size || 1 };
   }
   function makeSplit(direction, children, size) {
     return { type: 'split', id: nextId++, direction, children, size: size || 1 };
@@ -332,7 +315,7 @@
 
   function deserializeNode(data) {
     if (data.type === 'leaf') {
-      return { type: 'leaf', id: data.id, name: data.name || null, editing: false, justAdded: false, size: data.size || 1 };
+      return { type: 'leaf', id: data.id, name: data.name || null, justAdded: false, size: data.size || 1 };
     }
     return {
       type: 'split',
@@ -692,27 +675,26 @@
     el.className = 'tile';
     el.dataset.tileId = node.id;
     el.style.flex = node.size + ' 1 0';
-    el.draggable = state.editMode && !node.editing;
-    el.addEventListener('dragstart', (e) => onDragStart(node, e));
+    el.draggable = false;
     el.addEventListener('dragover', (e) => onDragOver(node, el, e));
     el.addEventListener('dragleave', (e) => onDragLeave(el, e));
     el.addEventListener('drop', (e) => onDrop(node, el, e));
 
     const empty = document.createElement('div');
     empty.className = 'tile-empty';
-    if (node.editing) {
-      empty.appendChild(renderNameForm(node));
-    } else {
-      const plus = document.createElement('div');
-      plus.className = 'plus-icon';
-      plus.textContent = '+';
-      empty.appendChild(plus);
-      empty.addEventListener('click', () => {
-        node.editing = true;
-        render();
-      });
-    }
+    empty.appendChild(renderNameForm(node));
     el.appendChild(empty);
+
+    const closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'tile-close';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      closeLeaf(node);
+    });
+    el.appendChild(closeBtn);
 
     return el;
   }
@@ -739,8 +721,7 @@
     cancelBtn.textContent = 'Cancel';
     cancelBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      node.editing = false;
-      render();
+      closeLeaf(node);
     });
     form.appendChild(cancelBtn);
 
@@ -750,15 +731,13 @@
       const val = input.value.trim();
       if (!val) return;
       node.name = val;
-      node.editing = false;
       node.justAdded = true;
       render();
       scheduleFade(node);
     });
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') {
-        node.editing = false;
-        render();
+        closeLeaf(node);
       }
     });
 
