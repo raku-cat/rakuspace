@@ -20,6 +20,7 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 app.config.from_pyfile('rakuspace.cfg')
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
 
 # --- Initialize config values ---
@@ -374,7 +375,8 @@ def _send_irc(irc_cfg, ctx, state):
     block = irc_cfg.get("online" if state == "live" else "offline") or {}
     body = _render_vars(block.get("body", ""), ctx)
     if not body:
-        return  # nothing configured for this event, silently do nothing
+        log.warning("skipping irc notify for %s: no message body configured for '%s' event", channel, state)
+        return
 
     port = irc_cfg.get("port") or (6697 if irc_cfg.get("tls") else 6667)
     nick = irc_cfg.get("nick") or irc_cfg.get("sasl_user") or "rakuspace"
@@ -382,6 +384,17 @@ def _send_irc(irc_cfg, ctx, state):
     sasl_password = irc_cfg.get("sasl_password")
     server_password = irc_cfg.get("server_password")
     use_sasl = bool(sasl_user and sasl_password)
+
+    # Numeric replies indicating something went wrong with registration/join/send.
+    # https://www.alien.net.au/irc/irc2numerics.html
+    _ERROR_NUMERICS = {
+        "401", "403", "404", "405", "406", "407", "421", "432", "433", "436",
+        "437", "442", "451", "461", "464", "465", "471", "473", "474", "475",
+        "476", "477", "478", "482", "902", "904", "905", "906", "907",
+    }
+
+    log.info("irc notify: connecting to %s:%s (tls=%s, sasl=%s, channel=%s, state=%s)",
+              server, port, irc_cfg.get("tls"), use_sasl, channel, state)
 
     sock = None
     try:
@@ -391,24 +404,37 @@ def _send_irc(irc_cfg, ctx, state):
             sock = ssl_ctx.wrap_socket(sock, server_hostname=server)
         sock.settimeout(NOTIFY_TIMEOUT_SECONDS)
         conn = sock.makefile("rwb", buffering=0)
+        log.info("irc notify: connected to %s:%s", server, port)
 
         def send_line(line):
+            if line.startswith("PASS ") or line.startswith("AUTHENTICATE "):
+                log.debug("irc notify -> %s <redacted>", line.split(" ", 1)[0])
+            else:
+                log.debug("irc notify -> %s", line)
             conn.write((line + "\r\n").encode("utf-8", errors="replace"))
 
         def read_until(predicate, max_lines=200):
             # Reads lines (answering PINGs along the way) until predicate(line)
             # is true, the connection ends, or max_lines is hit -- whichever
             # comes first. Best-effort; never blocks past the socket timeout.
+            # Logs any numeric error replies seen along the way so failures
+            # (bad nick/password/channel/etc) are visible instead of silent.
             for _ in range(max_lines):
                 raw_line = conn.readline()
                 if not raw_line:
+                    log.warning("irc notify: connection to %s closed by server while waiting for a response", server)
                     return None
                 text = raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
+                log.debug("irc notify <- %s", text)
                 if text.startswith("PING"):
                     send_line("PONG" + text[4:])
                     continue
+                parts = text.split()
+                if len(parts) > 1 and parts[1] in _ERROR_NUMERICS:
+                    log.warning("irc notify: server %s replied with error: %s", server, text)
                 if predicate(text):
                     return text
+            log.warning("irc notify: gave up waiting for a response from %s after %d lines", server, max_lines)
             return None
 
         if server_password:
@@ -424,11 +450,17 @@ def _send_irc(irc_cfg, ctx, state):
             read_until(lambda l: l.startswith("AUTHENTICATE"))
             token = base64.b64encode(f"\0{sasl_user}\0{sasl_password}".encode("utf-8")).decode("ascii")
             send_line(f"AUTHENTICATE {token}")
-            read_until(lambda l: " 903 " in l or " 904 " in l or " 905 " in l)
+            sasl_result = read_until(lambda l: " 903 " in l or " 904 " in l or " 905 " in l)
+            if sasl_result and " 903 " not in sasl_result:
+                log.warning("irc notify: SASL authentication to %s failed: %s", server, sasl_result)
             send_line("CAP END")
 
         # Wait for registration (numeric 001, RPL_WELCOME) before doing anything else.
-        read_until(lambda l: " 001 " in l)
+        welcome = read_until(lambda l: " 001 " in l)
+        if not welcome:
+            log.warning("irc notify: never received RPL_WELCOME (001) from %s; proceeding anyway", server)
+        else:
+            log.info("irc notify: registered with %s as %s", server, nick)
 
         # Mark ourselves as a bot. Some servers reject this mode change (unknown
         # mode, not permitted, etc) -- that's fine, we still proceed and connect
@@ -436,10 +468,17 @@ def _send_irc(irc_cfg, ctx, state):
         send_line(f"MODE {nick} +B")
 
         send_line(f"JOIN {channel}")
+        join_result = read_until(lambda l: "JOIN" in l and channel in l)
+        if not join_result:
+            log.warning("irc notify: no confirmation that %s joined %s; message may not be delivered", nick, channel)
+        else:
+            log.info("irc notify: joined %s", channel)
+
         send_line(f"PRIVMSG {channel} :{body}")
         send_line("QUIT :bye")
-    except Exception as exc:
-        log.warning("irc notification to %s failed: %s", server, exc)
+        log.info("irc notify: sent message to %s on %s", channel, server)
+    except Exception:
+        log.exception("irc notification to %s failed", server)
     finally:
         try:
             if sock:
@@ -737,6 +776,8 @@ def test_notification(username):
         elif channel == "irc":
             if not cfg["irc"]["server"] or not cfg["irc"]["channel"]:
                 status = "Enter an IRC server and channel before sending a test."
+            elif not cfg["irc"]["online"]["body"]:
+                status = "Enter an online message before sending a test (the test uses the 'online' template)."
             else:
                 _send_irc(cfg["irc"], ctx, "live")
                 status = "IRC test notification sent (check the channel)."
