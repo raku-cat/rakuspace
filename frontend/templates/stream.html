@@ -71,7 +71,7 @@
     label { display: block; font-size: 0.85em; color: var(--ctp-subtext0); margin: 0 0 4px; }
     label.inline { display: inline; margin: 0 0 0 6px; color: var(--ctp-text); }
 
-    input[type="text"] {
+    input[type="text"], input[type="password"] {
       width: 100%;
       padding: 7px 10px;
       font-size: 0.95em;
@@ -82,9 +82,9 @@
       outline: none;
       font-family: inherit;
     }
-    input[type="text"]:focus { border-color: var(--ctp-overlay1); }
-    input[type="text"][readonly] { color: var(--ctp-subtext0); }
-    input[type="text"]:disabled { opacity: 0.6; }
+    input[type="text"]:focus, input[type="password"]:focus { border-color: var(--ctp-overlay1); }
+    input[type="text"][readonly], input[type="password"][readonly] { color: var(--ctp-subtext0); }
+    input[type="text"]:disabled, input[type="password"]:disabled { opacity: 0.6; }
 
     .field-row { display: flex; gap: 6px; margin-bottom: 14px; }
     .field-row input, .field-row .key-wrap { margin-bottom: 0; flex: 1; min-width: 0; }
@@ -120,7 +120,7 @@
     }
     .copy-btn:hover { filter: brightness(1.08); background: var(--ctp-pink); }
 
-    input#streamkey.blurred { filter: blur(6px); cursor: pointer; }
+    input#streamkey.blurred { filter: blur(4.5px); cursor: pointer; }
 
     .key-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
     .key-actions form { margin: 0; }
