@@ -17,19 +17,20 @@
     const appName = "{{ OME_APP_NAME }}";
     const streamTitle = "{{ streamtitle }}";
 
+    // No initial `sources` -- creating the player with a source and
+    // autoStart would fire a connection attempt to OME immediately on page
+    // load, before we've heard from the SSE live-state feed below. The
+    // first (and every subsequent) load is instead driven off that feed,
+    // same as the /next player; autoStart is kept so each load() still
+    // attempts to play automatically when the browser allows it.
     const player = OvenPlayer.create("player", {
-      sources: [{
-        type: "webrtc",
-        file: `wss://${host}:${port}/${appName}/${streamName}`,
-        overrideNative: true,
-      }],
+      sources: [],
       autoStart: true,
       playbackRates: [1],
       disableSeekUI: true,
       showBigPlayButton: true,
       expandFullScreenUI: true,
       title: `${streamTitle}`
-      
     });
 
     const offlineMsg = document.getElementById("offline");
@@ -104,6 +105,7 @@
           type: "webrtc",
           file: `wss://${host}:${port}/${appName}/${streamName}`
         }]);
+        player.play();
       } else {
         setOffline();
       }
