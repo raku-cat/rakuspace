@@ -15,12 +15,14 @@ import urllib.request
 from datetime import datetime, timezone
 from functools import wraps
 from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response
-from flask_socketio import SocketIO, emit
+from flask_wtf import CSRFProtect
 from urllib.parse import urlparse, quote
 
 app = Flask(__name__)
-socketio = SocketIO(app)
 app.config.from_pyfile('rakuspace.cfg')
+app.secret_key = app.config['SECRET_KEY']
+
+csrf = CSRFProtect(app)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -98,10 +100,17 @@ ensure_schema()
 
 # --- User / key management ---
 def get_or_create_userkey(username, regen=False):
+    """Returns (userid, streamkey, row), where row is the full existing users
+    row (or None for a newly-created user) -- callers that need the other
+    columns can read them off `row` instead of issuing a second SELECT."""
     db = get_db()
     with db:  # automatically commits after insert
         cur = db.cursor()
-        cur.execute("SELECT userid, streamkey FROM users WHERE username=?", (username,))
+        cur.execute(
+            "SELECT userid, streamkey, stream_title, notify_url, notify_builtin, notify_on_live, "
+            "notify_on_offline, offline_image_url, chat_channel FROM users WHERE username=?",
+            (username,),
+        )
         row = cur.fetchone()
 
         if row and not regen:
@@ -111,11 +120,12 @@ def get_or_create_userkey(username, regen=False):
             if not row:
                 cur.execute("INSERT INTO users (username, streamkey) VALUES (?, ?)", (username, streamkey))
                 userid = cur.lastrowid
+                row = None
             else:
                 cur.execute("UPDATE users SET streamkey=? WHERE username=?", (streamkey, username))
                 userid = row["userid"]
 
-    return userid, streamkey
+    return userid, streamkey, row
 
 def generate_stream_key(length=30):
     alphabet = string.ascii_letters + string.digits  # a-zA-Z0-9
@@ -156,6 +166,12 @@ def require_auth(f):
         if header_username:
              username = header_username
 
+        # Deliberately not real auth: the password half is decoded and thrown
+        # away, so *any* password authenticates as the given username. This
+        # exists purely as a zero-setup way to switch users for local
+        # development without standing up a real auth layer (Authelia etc)
+        # in front. Never enable this in a deployment reachable by anyone
+        # other than the developer running it.
         if str(app.config['BASICAUTH_ENABLED']).lower() == 'true':
             auth = request.headers.get("Authorization")
             if auth and auth.startswith("Basic "):
@@ -702,16 +718,8 @@ def play_stream(streamname):
 def stream_page(username):
     # In production this comes from Authelia/NGINX via REMOTE_USER header
 
-    userid, streamkey = get_or_create_userkey(username)
+    userid, streamkey, row = get_or_create_userkey(username)
 
-    db = get_db()
-    cur = db.cursor()
-    cur.execute(
-        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline, offline_image_url, "
-        "chat_channel FROM users WHERE username=?",
-        (username,),
-    )
-    row = cur.fetchone()
     streamtitle = row["stream_title"] if row else None
     notify_url = row["notify_url"] if row else None
     notify_builtin = bool(row["notify_builtin"]) if row else False
@@ -760,7 +768,7 @@ def save_settings(username):
         error = _validate_notify_url(notify_url)
 
     if error:
-        userid, streamkey = get_or_create_userkey(username)
+        userid, streamkey, _row = get_or_create_userkey(username)
         return render_template(
             "stream.html",
             username=username,
@@ -895,6 +903,7 @@ def test_notification(username):
 
 
 @app.route("/auth/ome", methods=["POST"])
+@csrf.exempt  # called by OME directly, not a browser -- no CSRF token to check
 def verify_webhook():
     deny = jsonify({"allowed": False})
     data = request.json or {} # Fallback to empty dict if no json
@@ -976,5 +985,4 @@ def verify_webhook():
 SITE_HOST = app.config['SITE_HOST']
 SITE_PORT = app.config['SITE_PORT']
 if __name__ == '__main__':
-    socketio.run(app, host=SITE_HOST, port=int(SITE_PORT),
-                 debug=True, use_reloader=True)
+    app.run(host=SITE_HOST, port=int(SITE_PORT), debug=True, use_reloader=True)

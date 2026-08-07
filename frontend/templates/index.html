@@ -219,9 +219,14 @@
       const list = getRecent();
       if (list.length === 0) { recentDiv.style.display = "none"; return; }
       recentDiv.style.display = "";
-      recentList.innerHTML = list.map(n =>
-        `<li><a href="/live/${encodeURIComponent(n)}">${n}</a></li>`
-      ).join("");
+      recentList.replaceChildren(...list.map(n => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = "/live/" + encodeURIComponent(n);
+        a.textContent = n;
+        li.appendChild(a);
+        return li;
+      }));
     }
     renderRecent();
 

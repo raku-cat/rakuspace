@@ -163,6 +163,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('set_notifications') }}" id="notify-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <!-- Discord -->
       <div class="card">

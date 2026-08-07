@@ -1,3 +1,7 @@
+# Secret key used to sign session cookies and CSRF tokens. Generate a real
+# random value per deployment, e.g.: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY = 'change-me'
+
 # Host of your RTMP provider (where users will be streaming to).
 OME_PROVIDER_HOST = 'localhost'
 OME_RTMP_PROVIDER_PORT = '1935'
@@ -21,8 +25,11 @@ SITE_PORT='5000'
 # as the script.
 DB_PATH = 'users.db'
 
-# Enable reading headers from http basic auth, put behind a default
-# disabled option due to security risks.
+# Enable reading the username from HTTP Basic Auth. The password is not
+# checked at all -- this is not real authentication, just a zero-setup way
+# to switch users during local development without a real auth layer
+# (Authelia etc) in front. Only ever enable this on a machine only you can
+# reach.
 BASICAUTH_ENABLED = 'False'
 
 # --- Go-live notifications ---

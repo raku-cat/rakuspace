@@ -18,7 +18,7 @@ python setup_db.py                       # creates users.db, refuses to overwrit
 python RakuSpace.py                      # runs Flask's debug server on SITE_HOST:SITE_PORT
 ```
 
-There is no test suite, linter, or build step configured in this repo.
+Tests live in `frontend/tests/` (pytest, run `python -m pytest tests/` from `frontend/` inside the venv). No linter or build step is configured.
 
 Production runs via granian instead of the Flask debug server (see `frontend/Dockerfile`):
 ```
@@ -27,13 +27,14 @@ granian --host 0.0.0.0 --port 6868 --interface wsgi RakuSpace:app
 
 Podman quadlet deployment: `frontend/rakuspace.container` bind-mounts `rakuspace.cfg` and `users.db` into the container; install to `~/.config/containers/systemd/` or `/etc/containers/systemd/` and reload systemd.
 
-`rakuspace.cfg` and `*.db` are gitignored — never commit real config or the user database. `rakuspace.cfg.example` is the template for all config keys (OME hosts/ports, `SITE_HOST`/`SITE_PORT`, `DB_PATH`, `BASICAUTH_ENABLED`).
+`rakuspace.cfg` and `*.db` are gitignored — never commit real config or the user database. `rakuspace.cfg.example` is the template for all config keys (OME hosts/ports, `SITE_HOST`/`SITE_PORT`, `DB_PATH`, `SECRET_KEY`, `BASICAUTH_ENABLED`). `SECRET_KEY` must be set to a real random value per deployment — it signs the session cookie and CSRF tokens.
 
 ## Architecture
 
 Everything is one Flask app: `frontend/RakuSpace.py`. Key pieces:
 
-- **Auth model**: there's no login system of its own. `require_auth` reads the username from `X-Forwarded-User`/`Remote-User` headers (set by an upstream reverse-proxy auth layer like Authelia) or, if `BASICAUTH_ENABLED` is true, decodes HTTP Basic auth. Routes decorated with `@require_auth` receive the resolved `username` as a kwarg.
+- **Auth model**: there's no login system of its own. `require_auth` reads the username from `X-Forwarded-User`/`Remote-User` headers (set by an upstream reverse-proxy auth layer like Authelia) or, if `BASICAUTH_ENABLED` is true, decodes HTTP Basic auth. Routes decorated with `@require_auth` receive the resolved `username` as a kwarg. Basic auth here only ever reads the *username* out of the credentials — the password is decoded and discarded, deliberately, as a zero-setup way to switch users locally without standing up a real auth layer; never enable `BASICAUTH_ENABLED` outside a machine only the developer can reach.
+- **CSRF**: `Flask-WTF`'s `CSRFProtect` wraps the app; state-changing POST routes (`regen_key`, `save_settings`, `set_notifications`, `test_notification`) need a `csrf_token` hidden field, already present in `stream.html`/`notifications.html`. `/auth/ome` is `@csrf.exempt` since OME calls it directly, not a browser.
 - **User/key storage**: a single SQLite table (`users`, see `setup_db.py`) keyed by `userid`/`username`, storing a per-user `streamkey` (random 30-char token via `generate_stream_key`) and `stream_title` set through the app. `get_db()`/`close_db()` manage a per-request connection via Flask's `g`.
 - **OME integration is the core flow**: OME is configured with `AdmissionWebhooks` pointing at `POST /auth/ome` (see `backend/README.md` and `Server.xml*`). When a user's streaming client publishes RTMP to `.../live/<userid>_<streamkey>`, OME calls this webhook; `verify_webhook()` parses the URL, validates hostname against `OME_PROVIDER_HOST`/`RTMP_ALT_HOSTS`, looks up the user by `userid`, and compares `streamkey` with `secrets.compare_digest`. On success it returns `new_url` rewriting the stream to `RTMP_HOST/<username>`, which is what viewers/players actually reference.
 - **Pages**:
@@ -46,5 +47,5 @@ Everything is one Flask app: `frontend/RakuSpace.py`. Key pieces:
 
 ## Working in this repo
 
-- Templates (`frontend/templates/*.html`) and `frontend/static/` (bundled OvenPlayer) are the actual frontend; files suffixed `.old`/`.v2` or the top-level loose `index.html`/`rakuspace.zip` are stale scratch artifacts, not part of the served app — don't treat them as sources of truth.
+- Templates (`frontend/templates/*.html`) and `frontend/static/` (bundled OvenPlayer) are the actual frontend. Stale scratch artifacts (old drafts, a stray zip) live tucked away in `old/` folders next to whatever they're a stale copy of (`frontend/old/`, `frontend/templates/old/`, top-level `old/`) — not part of the served app, don't treat them as sources of truth.
 - `backend/Server.xml*` files are illustrative OME configs ("probably won't even launch without modification" per `backend/README.md`), not a runnable service to build against.

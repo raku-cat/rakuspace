@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Stream</title>
+  <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
+  <style>
+    body { margin:0; background:#000; display:flex; align-items:center; justify-content:center; height:100vh; }
+    #player { width:100%; height:100%; }
+    .offline { color:white; font-family:sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="player"></div>
+  <div id="offline" class="offline" style="display:none;">No stream live</div>
+  <script>
+    const streamUrl = "wss://rakuspace.sillycentral.raku.party:3334/rakuspace/stream"; // WebRTC URL
+    const player = OvenPlayer.create('player', {
+      sources: [{
+        type: "webrtc",
+        file: streamUrl
+      }],
+      autoStart: true
+    });
+
+    player.on('error', function() {
+      document.getElementById('player').style.display = "none";
+      document.getElementById('offline').style.display = "block";
+    });
+  </script>
+</body>
+</html>

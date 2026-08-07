@@ -185,6 +185,7 @@
       </div>
       <div class="key-actions">
         <form method="post" action="{{ url_for('regen_key') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="regen-btn">Regenerate Key</button>
         </form>
         <a href="#" id="reveal-link" class="reveal-link" onclick="revealKey(); return false;">Show key</a>
@@ -194,6 +195,7 @@
     <h2 class="section-heading">Customize</h2>
     <div class="card">
       <form id="settings-form" method="post" action="{{ url_for('save_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="streamtitle">Stream Title</label>
         <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}">
 
