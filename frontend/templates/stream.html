@@ -18,6 +18,7 @@
       --ctp-subtext0: #a5adcb;
       --ctp-subtext1: #b8c0e0;
       --ctp-text: #cad3f5;
+      --ctp-pink: #f5bde6;
       --ctp-red: #ed8796;
     }
 
@@ -34,12 +35,13 @@
     header {
       display: flex;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: space-between;
       padding: 0 24px;
       height: 48px;
       background: var(--ctp-crust);
       border-bottom: 1px solid var(--ctp-surface0);
     }
+    header .page-title { font-size: 0.95em; font-weight: 600; color: var(--ctp-subtext1); }
     header a.login-btn {
       font-size: 0.8em;
       color: var(--ctp-subtext0);
@@ -56,16 +58,15 @@
       padding: 24px;
     }
 
-    h1 { font-size: 1.3em; margin: 0 0 20px 0; color: var(--ctp-subtext1); }
+    .section-heading { font-size: 1.05em; font-weight: 600; color: var(--ctp-subtext1); margin: 0 0 8px 2px; }
 
     .card {
       background: var(--ctp-surface0);
       border: 1px solid var(--ctp-surface1);
       border-radius: 8px;
       padding: 20px 24px;
-      margin-bottom: 20px;
+      margin-bottom: 24px;
     }
-    .card h2 { margin: 0 0 14px 0; font-size: 1.05em; color: var(--ctp-subtext1); }
 
     label { display: block; font-size: 0.85em; color: var(--ctp-subtext0); margin: 0 0 4px; }
     label.inline { display: inline; margin: 0 0 0 6px; color: var(--ctp-text); }
@@ -80,13 +81,16 @@
       color: var(--ctp-text);
       outline: none;
       font-family: inherit;
-      margin-bottom: 10px;
     }
     input[type="text"]:focus { border-color: var(--ctp-overlay1); }
     input[type="text"][readonly] { color: var(--ctp-subtext0); }
+    input[type="text"]:disabled { opacity: 0.6; }
+
+    .field-row { display: flex; gap: 6px; margin-bottom: 14px; }
+    .field-row input { margin-bottom: 0; flex: 1; min-width: 0; }
 
     .checkbox-row { display: flex; align-items: center; margin: 4px 0 14px; }
-    .checkbox-row input { width: auto; margin: 0; }
+    .checkbox-row input { width: auto; margin: 0; accent-color: var(--ctp-pink); }
 
     .config-link { font-size: 0.85em; color: var(--ctp-subtext0); }
     .config-link a { color: inherit; }
@@ -102,6 +106,36 @@
     }
     button:hover { background: var(--ctp-surface2); }
 
+    .copy-btn {
+      flex: 0 0 auto;
+      padding: 0 12px;
+      font-size: 0.85em;
+      background: var(--ctp-mantle);
+      color: var(--ctp-subtext0);
+      border: 1px solid var(--ctp-surface2);
+    }
+    .copy-btn:hover { color: var(--ctp-text); border-color: var(--ctp-overlay1); background: var(--ctp-mantle); }
+
+    .regen-btn {
+      margin-top: 4px;
+      font-size: 0.85em;
+      padding: 6px 12px;
+      background: var(--ctp-mantle);
+      color: var(--ctp-subtext0);
+      border: 1px solid var(--ctp-surface2);
+    }
+    .regen-btn:hover { color: var(--ctp-text); border-color: var(--ctp-overlay1); background: var(--ctp-mantle); }
+
+    .save-btn {
+      padding: 10px 28px;
+      font-size: 0.95em;
+      font-weight: 600;
+      background: var(--ctp-pink);
+      color: var(--ctp-crust);
+      border: 1px solid var(--ctp-pink);
+    }
+    .save-btn:hover { filter: brightness(1.08); background: var(--ctp-pink); }
+
     .banner {
       padding: 10px 14px;
       border-radius: 4px;
@@ -116,71 +150,78 @@
 <body>
 
   <header>
+    <span class="page-title">Streaming Info for {{ username }}</span>
     <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
   </header>
 
   <main>
-    <h1>Streaming Info for {{ username }}</h1>
-
+    <h2 class="section-heading">Stream settings</h2>
     <div class="card">
-      <h2>RTMP URL</h2>
-      <form>
-        <label for="rtmp">RTMP URL</label>
-        <input type="text" value="{{ rtmp_url }}" id="rtmp" readonly size="50">
-      </form>
-    </div>
+      {% for url in rtmp_urls %}
+      <label for="rtmp-{{ loop.index0 }}">{{ "RTMP URL" if loop.first else "Alternate RTMP URL" }}</label>
+      <div class="field-row">
+        <input type="text" value="{{ url }}" id="rtmp-{{ loop.index0 }}" readonly>
+        <button type="button" class="copy-btn" onclick="copyField('rtmp-{{ loop.index0 }}')">Copy</button>
+      </div>
+      {% endfor %}
 
-    <div class="card">
-      <h2>Stream Key</h2>
+      <label for="streamkey">Stream Key</label>
+      <div class="field-row">
+        <input type="text" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly>
+        <button type="button" class="copy-btn" onclick="copyField('streamkey')">Copy</button>
+      </div>
       <form method="post" action="{{ url_for('regen_key') }}">
-        <label for="streamkey">Stream Key</label>
-        <input type="text" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly size="50">
-        <button type="submit">Regenerate Key</button>
+        <button type="submit" class="regen-btn">Regenerate Key</button>
       </form>
     </div>
 
+    <h2 class="section-heading">Customize</h2>
     <div class="card">
-      <h2>Stream Title</h2>
-      <form method="post" action="{{ url_for('set_title') }}">
+      <form id="settings-form" method="post" action="{{ url_for('save_settings') }}">
         <label for="streamtitle">Stream Title</label>
-        <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}" size="50">
-        <button type="submit">Update Title</button>
+        <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}">
       </form>
     </div>
 
+    <h2 class="section-heading">Notifications</h2>
     <div class="card">
-      <h2>Go-Live Notifications</h2>
       {% if notify_error %}
       <div class="banner">{{ notify_error }}</div>
       {% endif %}
-      <form method="post" action="{{ url_for('set_notify') }}">
-        <label for="notify_url">Notification URL</label>
-        <input type="text" id="notify_url" name="notify_url" value="{{ notify_url or '' }}"
-               placeholder="https://example.com/your-webhook" {% if notify_builtin %}disabled{% endif %}>
 
-        <div class="checkbox-row">
-          <input type="checkbox" id="notify_builtin" name="notify_builtin"
-                 onchange="document.getElementById('notify_url').disabled = this.checked;
-                           document.getElementById('notify_builtin_config_link').style.display = this.checked ? '' : 'none';"
-                 {% if notify_builtin %}checked{% endif %}>
-          <label class="inline" for="notify_builtin">Use built-in notifications</label>
-          <span id="notify_builtin_config_link" class="config-link" style="display: {% if notify_builtin %}inline{% else %}none{% endif %};">
-            &mdash; <a href="{{ url_for('notifications_page') }}">click here to configure notifications</a>
-          </span>
-        </div>
+      <label for="notify_url">Notification URL</label>
+      <input type="text" form="settings-form" id="notify_url" name="notify_url" value="{{ notify_url or '' }}"
+             placeholder="https://example.com/your-webhook" {% if notify_builtin %}disabled{% endif %}>
 
-        <div class="checkbox-row">
-          <input type="checkbox" id="notify_on_live" name="notify_on_live" {% if notify_on_live %}checked{% endif %}>
-          <label class="inline" for="notify_on_live">Notify when stream goes live</label>
-        </div>
-        <div class="checkbox-row">
-          <input type="checkbox" id="notify_on_offline" name="notify_on_offline" {% if notify_on_offline %}checked{% endif %}>
-          <label class="inline" for="notify_on_offline">Notify when stream goes offline</label>
-        </div>
+      <div class="checkbox-row">
+        <input type="checkbox" form="settings-form" id="notify_builtin" name="notify_builtin"
+               onchange="document.getElementById('notify_url').disabled = this.checked;
+                         document.getElementById('notify_builtin_config_link').style.display = this.checked ? '' : 'none';"
+               {% if notify_builtin %}checked{% endif %}>
+        <label class="inline" for="notify_builtin">Use built-in notifications</label>
+        <span id="notify_builtin_config_link" class="config-link" style="display: {% if notify_builtin %}inline{% else %}none{% endif %};">
+          &mdash; <a href="{{ url_for('notifications_page') }}">click here to configure notifications</a>
+        </span>
+      </div>
 
-        <button type="submit">Save Notification Settings</button>
-      </form>
+      <div class="checkbox-row">
+        <input type="checkbox" form="settings-form" id="notify_on_live" name="notify_on_live" {% if notify_on_live %}checked{% endif %}>
+        <label class="inline" for="notify_on_live">Notify when stream goes live</label>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" form="settings-form" id="notify_on_offline" name="notify_on_offline" {% if notify_on_offline %}checked{% endif %}>
+        <label class="inline" for="notify_on_offline">Notify when stream goes offline</label>
+      </div>
     </div>
+
+    <button type="submit" form="settings-form" class="save-btn">Save Settings</button>
   </main>
+
+  <script>
+    function copyField(id) {
+      const el = document.getElementById(id);
+      navigator.clipboard.writeText(el.value);
+    }
+  </script>
 </body>
 </html>

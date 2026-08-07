@@ -32,6 +32,11 @@ OME_APP_NAME = app.config['OME_APP_NAME']
 OME_RTMP_PROVIDER_PORT = app.config['OME_RTMP_PROVIDER_PORT']
 RTMP_HOST = f"rtmp://{OME_PROVIDER_HOST}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
 RTMP_ALT_HOSTS = app.config['RTMP_ALT_HOSTS']
+RTMP_URLS = [RTMP_HOST] + [
+    f"rtmp://{host}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
+    for host in sorted(RTMP_ALT_HOSTS)
+    if host != OME_PROVIDER_HOST
+]
 
 # --- Go-live notification config ---
 NOTIFY_VALIDATE_URLS = str(app.config.get('NOTIFY_VALIDATE_URLS', 'True')).lower() == 'true'
@@ -633,7 +638,7 @@ def stream_page(username):
         userid=userid,
         streamkey=streamkey,
         streamtitle=streamtitle,
-        rtmp_url=RTMP_HOST,
+        rtmp_urls=RTMP_URLS,
         notify_url=notify_url,
         notify_builtin=notify_builtin,
         notify_on_live=notify_on_live,
@@ -648,20 +653,11 @@ def regen_key(username):
     get_or_create_userkey(username, regen=True)
     return redirect(url_for("stream_page"))
 
-@app.route("/stream_info/set_title", methods=["POST"])
+
+@app.route("/stream_info/save_settings", methods=["POST"])
 @require_auth
-def set_title(username):
+def save_settings(username):
     streamtitle = request.form.get("streamtitle")
-    db = get_db()
-    with db:
-        db.execute("UPDATE users SET stream_title=? WHERE username=?", (streamtitle, username))
-
-    return redirect(url_for("stream_page"))
-
-
-@app.route("/stream_info/set_notify", methods=["POST"])
-@require_auth
-def set_notify(username):
     notify_url = (request.form.get("notify_url") or "").strip()
     notify_builtin = request.form.get("notify_builtin") == "on"
     notify_on_live = request.form.get("notify_on_live") == "on"
@@ -673,18 +669,13 @@ def set_notify(username):
 
     if error:
         userid, streamkey = get_or_create_userkey(username)
-        db = get_db()
-        cur = db.cursor()
-        cur.execute("SELECT stream_title FROM users WHERE username=?", (username,))
-        row = cur.fetchone()
-        streamtitle = row["stream_title"] if row else None
         return render_template(
             "stream.html",
             username=username,
             userid=userid,
             streamkey=streamkey,
             streamtitle=streamtitle,
-            rtmp_url=RTMP_HOST,
+            rtmp_urls=RTMP_URLS,
             notify_url=notify_url,
             notify_builtin=notify_builtin,
             notify_on_live=notify_on_live,
@@ -695,9 +686,9 @@ def set_notify(username):
     db = get_db()
     with db:
         db.execute(
-            "UPDATE users SET notify_url=?, notify_builtin=?, notify_on_live=?, notify_on_offline=? "
+            "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, notify_on_offline=? "
             "WHERE username=?",
-            (notify_url or None, int(notify_builtin), int(notify_on_live), int(notify_on_offline), username),
+            (streamtitle, notify_url or None, int(notify_builtin), int(notify_on_live), int(notify_on_offline), username),
         )
 
     return redirect(url_for("stream_page"))

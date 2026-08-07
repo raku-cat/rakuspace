@@ -24,7 +24,7 @@ The app wont do much on its own, it has the following pages:
   - Public OvenPlayer view for a given stream name.
  - `/stream_info`
   - Expects to be accessed through something like Authelia or, if you enabled it, http basic auth. It will read the username from the relevant authentication header, and create a database entry for that user, displaying the key and rtmp endpoint to use, with buttons to regenerate the key and set a stream title.
- - `/stream_info/regen_key`, `/stream_info/set_title`
+ - `/stream_info/regen_key`, `/stream_info/save_settings`
   - POST-only actions used by the `/stream_info` page.
  - `/auth/ome`
   - To be used with OME's AdmissionWebhook to authenticate stream keys, see configs in [backend](https://github.com/raku-cat/rakuspace/backend) for more information on how to set this up.
