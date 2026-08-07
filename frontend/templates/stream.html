@@ -4,59 +4,185 @@
 <head>
   <meta charset="UTF-8">
   <title>Streaming Info</title>
+  <style>
+    :root {
+      /* Catppuccin Macchiato */
+      --ctp-crust: #181926;
+      --ctp-mantle: #1e2030;
+      --ctp-base: #24273a;
+      --ctp-surface0: #363a4f;
+      --ctp-surface1: #494d64;
+      --ctp-surface2: #5b6078;
+      --ctp-overlay0: #6e738d;
+      --ctp-overlay1: #8087a2;
+      --ctp-subtext0: #a5adcb;
+      --ctp-subtext1: #b8c0e0;
+      --ctp-text: #cad3f5;
+      --ctp-red: #ed8796;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: var(--ctp-base);
+      color: var(--ctp-text);
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 48px;
+      background: var(--ctp-crust);
+      border-bottom: 1px solid var(--ctp-surface0);
+    }
+    header .site-name { font-weight: 600; letter-spacing: 0.03em; color: var(--ctp-text); }
+    header a.login-btn {
+      font-size: 0.8em;
+      color: var(--ctp-subtext0);
+      text-decoration: none;
+      padding: 4px 10px;
+      border: 1px solid var(--ctp-surface1);
+      border-radius: 4px;
+    }
+    header a.login-btn:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
+
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1 { font-size: 1.3em; margin: 0 0 20px 0; color: var(--ctp-subtext1); }
+
+    .card {
+      background: var(--ctp-surface0);
+      border: 1px solid var(--ctp-surface1);
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 { margin: 0 0 14px 0; font-size: 1.05em; color: var(--ctp-subtext1); }
+
+    label { display: block; font-size: 0.85em; color: var(--ctp-subtext0); margin: 0 0 4px; }
+    label.inline { display: inline; margin: 0 0 0 6px; color: var(--ctp-text); }
+
+    input[type="text"] {
+      width: 100%;
+      padding: 7px 10px;
+      font-size: 0.95em;
+      background: var(--ctp-mantle);
+      border: 1px solid var(--ctp-surface2);
+      border-radius: 4px;
+      color: var(--ctp-text);
+      outline: none;
+      font-family: inherit;
+      margin-bottom: 10px;
+    }
+    input[type="text"]:focus { border-color: var(--ctp-overlay1); }
+    input[type="text"][readonly] { color: var(--ctp-subtext0); }
+
+    .checkbox-row { display: flex; align-items: center; margin: 4px 0 14px; }
+    .checkbox-row input { width: auto; margin: 0; }
+
+    .config-link { font-size: 0.85em; color: var(--ctp-subtext0); }
+    .config-link a { color: inherit; }
+
+    button {
+      padding: 8px 16px;
+      font-size: 0.95em;
+      background: var(--ctp-surface1);
+      color: var(--ctp-text);
+      border: 1px solid var(--ctp-surface2);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: var(--ctp-surface2); }
+
+    .banner {
+      padding: 10px 14px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 0.9em;
+      background: var(--ctp-mantle);
+      border: 1px solid #5a2a2a;
+      color: var(--ctp-red);
+    }
+  </style>
 </head>
 <body>
-  <h1>Streaming Info for {{ username }}</h1>
-  <form>
-      <label for="rtmp"><b>RTMP URL:</b></label> 
-      <input type="text" value="{{ rtmp_url }}" id="rtmp" readonly size="50">
-  </form>
-  <form method="post" action="{{ url_for('regen_key') }}">
-      <label for="streamkey"><b>Stream Key:</b></label> 
-      <input type="text" value="{{ userid }}_{{ streamkey }}" readonly size="50">
-      <button type="submit">Regenerate Key</button>
-  </form>
-  <form method="post" action="{{ url_for('set_title') }}">
-      <label for="streamtitle"><b>Stream Title:</b></label>
-      <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}" size="50">
-      <button type="submit">Update Title</button>
-  </form>
 
-  <h2>Go-Live Notifications</h2>
-  {% if notify_error %}
-  <p style="color: red;">{{ notify_error }}</p>
-  {% endif %}
-  <form method="post" action="{{ url_for('set_notify') }}">
-      <p>
-        <label for="notify_url"><b>Notification URL:</b></label>
-        <input type="text" id="notify_url" name="notify_url" value="{{ notify_url or '' }}" size="50"
+  <header>
+    <span class="site-name">RakuSpace</span>
+    <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
+  </header>
+
+  <main>
+    <h1>Streaming Info for {{ username }}</h1>
+
+    <div class="card">
+      <h2>RTMP URL</h2>
+      <form>
+        <label for="rtmp">RTMP URL</label>
+        <input type="text" value="{{ rtmp_url }}" id="rtmp" readonly size="50">
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Stream Key</h2>
+      <form method="post" action="{{ url_for('regen_key') }}">
+        <label for="streamkey">Stream Key</label>
+        <input type="text" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly size="50">
+        <button type="submit">Regenerate Key</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Stream Title</h2>
+      <form method="post" action="{{ url_for('set_title') }}">
+        <label for="streamtitle">Stream Title</label>
+        <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}" size="50">
+        <button type="submit">Update Title</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <h2>Go-Live Notifications</h2>
+      {% if notify_error %}
+      <div class="banner">{{ notify_error }}</div>
+      {% endif %}
+      <form method="post" action="{{ url_for('set_notify') }}">
+        <label for="notify_url">Notification URL</label>
+        <input type="text" id="notify_url" name="notify_url" value="{{ notify_url or '' }}"
                placeholder="https://example.com/your-webhook" {% if notify_builtin %}disabled{% endif %}>
-      </p>
-      <p>
-        <label for="notify_builtin">
+
+        <div class="checkbox-row">
           <input type="checkbox" id="notify_builtin" name="notify_builtin"
                  onchange="document.getElementById('notify_url').disabled = this.checked;
                            document.getElementById('notify_builtin_config_link').style.display = this.checked ? '' : 'none';"
                  {% if notify_builtin %}checked{% endif %}>
-          Use built-in notifications
-        </label>
-        <span id="notify_builtin_config_link" style="display: {% if notify_builtin %}inline{% else %}none{% endif %};">
-          &mdash; <a href="{{ url_for('notifications_page') }}">click here to configure notifications</a>
-        </span>
-      </p>
-      <p>
-        <label for="notify_on_live">
+          <label class="inline" for="notify_builtin">Use built-in notifications</label>
+          <span id="notify_builtin_config_link" class="config-link" style="display: {% if notify_builtin %}inline{% else %}none{% endif %};">
+            &mdash; <a href="{{ url_for('notifications_page') }}">click here to configure notifications</a>
+          </span>
+        </div>
+
+        <div class="checkbox-row">
           <input type="checkbox" id="notify_on_live" name="notify_on_live" {% if notify_on_live %}checked{% endif %}>
-          Notify when stream goes live
-        </label>
-      </p>
-      <p>
-        <label for="notify_on_offline">
+          <label class="inline" for="notify_on_live">Notify when stream goes live</label>
+        </div>
+        <div class="checkbox-row">
           <input type="checkbox" id="notify_on_offline" name="notify_on_offline" {% if notify_on_offline %}checked{% endif %}>
-          Notify when stream goes offline
-        </label>
-      </p>
-      <button type="submit">Save Notification Settings</button>
-  </form>
+          <label class="inline" for="notify_on_offline">Notify when stream goes offline</label>
+        </div>
+
+        <button type="submit">Save Notification Settings</button>
+      </form>
+    </div>
+  </main>
 </body>
 </html>
