@@ -87,7 +87,10 @@
     input[type="text"]:disabled { opacity: 0.6; }
 
     .field-row { display: flex; gap: 6px; margin-bottom: 14px; }
-    .field-row input { margin-bottom: 0; flex: 1; min-width: 0; }
+    .field-row input, .field-row .key-wrap { margin-bottom: 0; flex: 1; min-width: 0; }
+
+    .key-wrap { overflow: hidden; border-radius: 4px; }
+    .key-wrap input { width: 100%; }
 
     .checkbox-row { display: flex; align-items: center; margin: 4px 0 14px; }
     .checkbox-row input { width: auto; margin: 0; accent-color: var(--ctp-pink); }
@@ -117,7 +120,7 @@
     }
     .copy-btn:hover { filter: brightness(1.08); background: var(--ctp-pink); }
 
-    input#streamkey.blurred { filter: blur(4px); cursor: pointer; }
+    input#streamkey.blurred { filter: blur(6px); cursor: pointer; }
 
     .key-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
     .key-actions form { margin: 0; }
@@ -175,7 +178,9 @@
 
       <label for="streamkey">Stream Key</label>
       <div class="field-row">
-        <input type="password" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly onclick="revealKey()">
+        <div class="key-wrap">
+          <input type="password" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly onclick="revealKey()">
+        </div>
         <button type="button" class="copy-btn" onclick="copyField('streamkey')">Copy</button>
       </div>
       <div class="key-actions">
@@ -208,8 +213,7 @@
         <input type="checkbox" form="settings-form" id="notify_builtin" name="notify_builtin"
                onchange="document.getElementById('notify_url').disabled = this.checked;"
                {% if notify_builtin %}checked{% endif %}>
-        <label class="inline" for="notify_builtin">Use built-in notifications</label>
-        <span class="config-link"> &ndash; <a href="{{ url_for('notifications_page') }}">Configure</a></span>
+        <label class="inline" for="notify_builtin">Use built-in notifications</label><span class="config-link"> - <a href="{{ url_for('notifications_page') }}">Configure</a></span>
       </div>
 
       <div class="checkbox-row">
@@ -241,8 +245,7 @@
 
     function hideKey() {
       const el = document.getElementById('streamkey');
-      el.type = 'password';
-      el.classList.remove('blurred');
+      el.classList.add('blurred');
       document.getElementById('reveal-link').textContent = 'Show key';
       document.getElementById('reveal-link').onclick = function() { revealKey(); return false; };
     }
