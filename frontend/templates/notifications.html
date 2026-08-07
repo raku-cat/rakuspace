@@ -34,13 +34,12 @@
     header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       padding: 0 24px;
       height: 48px;
       background: var(--ctp-crust);
       border-bottom: 1px solid var(--ctp-surface0);
     }
-    header .site-name { font-weight: 600; letter-spacing: 0.03em; color: var(--ctp-text); }
     header a.login-btn {
       font-size: 0.8em;
       color: var(--ctp-subtext0);
@@ -134,7 +133,6 @@
 <body>
 
   <header>
-    <span class="site-name">RakuSpace</span>
     <a class="login-btn" href="{{ url_for('stream_page') }}">&larr; Back to Streamer Settings</a>
   </header>
 

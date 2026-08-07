@@ -37,16 +37,11 @@
     header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-end;
       padding: 0 24px;
       height: 48px;
       background: var(--ctp-crust);
       border-bottom: 1px solid var(--ctp-surface0);
-    }
-    header .site-name {
-      font-weight: 600;
-      letter-spacing: 0.03em;
-      color: var(--ctp-text);
     }
     header a.login-btn {
       font-size: 0.8em;
@@ -175,7 +170,6 @@
 <body>
 
   <header>
-    <span class="site-name">RakuSpace</span>
     <div class="header-links">
       <a class="multistream-link" href="/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
       <a class="login-btn" href="/stream_info">Streamer Settings</a>
