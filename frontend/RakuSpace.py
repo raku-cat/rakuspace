@@ -350,7 +350,11 @@ def _send_discord(discord_cfg, ctx, state):
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(
         webhook_url, data=data,
-        headers={"Content-Type": "application/json"}, method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "RakuSpace (https://raku.party, 1.0)",
+        },
+        method="POST",
     )
     try:
         urllib.request.urlopen(req, timeout=NOTIFY_TIMEOUT_SECONDS)
