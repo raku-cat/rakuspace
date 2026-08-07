@@ -3,12 +3,35 @@
 <head>
   <title>Watching {{ streamname }}</title>
   <script src="{{ url_for('static', filename='ovenplayer/ovenplayer.js') }}"></script>
+  <style>
+    #offline {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 2em;
+      background: black;
+      background-size: cover;
+      background-position: center;
+      text-align: center;
+      padding: 0 16px;
+    }
+    #offline.has-image::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.55);
+    }
+    #offline span {
+      position: relative;
+    }
+  </style>
 </head>
 <body style="margin:0; background:black; display:flex; align-items:center; justify-content:center; height:100vh;">
   <div id="player" style="width:100%; height:100%;"></div>
-  <div id="offline" style="position:absolute; color:white; font-size:2em; background:black; display:none;">
-    {{ streamname }} is offline
-  </div>
+  <div id="offline"><span>{{ streamname }} is offline</span></div>
 
   <script>
     const streamName = "{{ streamname }}";
@@ -16,6 +39,7 @@
     const port = "{{ OME_PUBLISHER_PORT }}"
     const appName = "{{ OME_APP_NAME }}";
     const streamTitle = "{{ streamtitle }}";
+    const offlineImageUrl = {{ (offline_image_url or "") | tojson }};
 
     // No initial `sources` -- creating the player with a source and
     // autoStart would fire a connection attempt to OME immediately on page
@@ -35,11 +59,16 @@
 
     const offlineMsg = document.getElementById("offline");
 
+    if (offlineImageUrl) {
+      offlineMsg.style.backgroundImage = `url("${offlineImageUrl.replace(/"/g, "%22")}")`;
+      offlineMsg.classList.add("has-image");
+    }
+
     let liveState = null; // "live" | "offline", set by the /api/live SSE push below
     let localRetryTimer = null;
 
     function setOffline() {
-      offlineMsg.style.display = "block";
+      offlineMsg.style.display = "flex";
       // Only worth retrying on our own if OME still thinks the stream is up
       // (a transient viewer-side glitch); if OME says offline, there's
       // nothing to reconnect to until the push below says otherwise.

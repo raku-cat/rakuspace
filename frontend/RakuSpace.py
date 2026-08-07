@@ -680,10 +680,12 @@ def live_events(streamname):
 @app.route("/live/<streamname>")
 def play_stream(streamname):
     streamtitle = get_stream_title(streamname)
+    offline_image_url = get_stream_offline_image(streamname)
     return render_template(
         "player.html",
         streamname=streamname,
         streamtitle=streamtitle,
+        offline_image_url=offline_image_url,
         OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
         OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
         OME_APP_NAME=OME_APP_NAME
