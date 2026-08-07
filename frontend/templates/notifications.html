@@ -19,6 +19,7 @@
       --ctp-text: #cad3f5;
       --ctp-green: #a6da95;
       --ctp-red: #ed8796;
+      --ctp-pink: #f5bde6;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -96,7 +97,7 @@
     textarea { resize: vertical; min-height: 50px; }
 
     .checkbox-row { display: flex; align-items: center; margin: 4px 0 14px; }
-    .checkbox-row input { width: auto; margin: 0; }
+    .checkbox-row input { width: auto; margin: 0; accent-color: var(--ctp-pink); }
 
     .row { display: flex; gap: 12px; }
     .row > div { flex: 1; }
@@ -109,14 +110,23 @@
     button {
       padding: 8px 16px;
       font-size: 0.95em;
-      background: var(--ctp-surface1);
-      color: var(--ctp-text);
-      border: 1px solid var(--ctp-surface2);
+      font-weight: 600;
+      background: var(--ctp-pink);
+      color: var(--ctp-crust);
+      border: 1px solid var(--ctp-pink);
       border-radius: 4px;
       cursor: pointer;
     }
-    button:hover { background: var(--ctp-surface2); }
-    button.secondary { background: var(--ctp-mantle); font-size: 0.85em; padding: 6px 12px; }
+    button:hover { filter: brightness(1.08); background: var(--ctp-pink); }
+    button.secondary {
+      background: var(--ctp-mantle);
+      color: var(--ctp-subtext0);
+      border: 1px solid var(--ctp-surface2);
+      font-weight: normal;
+      font-size: 0.85em;
+      padding: 6px 12px;
+    }
+    button.secondary:hover { color: var(--ctp-text); border-color: var(--ctp-overlay1); background: var(--ctp-mantle); filter: none; }
 
     .actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
 

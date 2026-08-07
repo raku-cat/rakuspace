@@ -19,6 +19,7 @@
       --ctp-blue: #8aadf4;
       --ctp-green: #a6da95;
       --ctp-red: #ed8796;
+      --ctp-pink: #f5bde6;
     }
 
     *, *::before, *::after { box-sizing: border-box; }
@@ -122,13 +123,14 @@
     button[type="submit"] {
       padding: 7px 14px;
       font-size: 1em;
-      background: var(--ctp-surface1);
-      color: var(--ctp-text);
-      border: 1px solid var(--ctp-surface2);
+      font-weight: 600;
+      background: var(--ctp-pink);
+      color: var(--ctp-crust);
+      border: 1px solid var(--ctp-pink);
       border-radius: 4px;
       cursor: pointer;
     }
-    button[type="submit"]:hover { background: var(--ctp-surface2); }
+    button[type="submit"]:hover { filter: brightness(1.08); background: var(--ctp-pink); }
 
     #stream-hint { font-size: 0.8em; height: 1.2em; margin-top: 6px; }
     #stream-hint.known { color: var(--ctp-green); }
