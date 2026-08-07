@@ -110,14 +110,19 @@
       flex: 0 0 auto;
       padding: 0 12px;
       font-size: 0.85em;
-      background: var(--ctp-mantle);
-      color: var(--ctp-subtext0);
-      border: 1px solid var(--ctp-surface2);
+      font-weight: 600;
+      background: var(--ctp-pink);
+      color: var(--ctp-crust);
+      border: 1px solid var(--ctp-pink);
     }
-    .copy-btn:hover { color: var(--ctp-text); border-color: var(--ctp-overlay1); background: var(--ctp-mantle); }
+    .copy-btn:hover { filter: brightness(1.08); background: var(--ctp-pink); }
+
+    input#streamkey.blurred { filter: blur(4px); cursor: pointer; }
+
+    .key-actions { display: flex; align-items: center; gap: 12px; margin-top: 4px; }
+    .key-actions form { margin: 0; }
 
     .regen-btn {
-      margin-top: 4px;
       font-size: 0.85em;
       padding: 6px 12px;
       background: var(--ctp-mantle);
@@ -125,6 +130,9 @@
       border: 1px solid var(--ctp-surface2);
     }
     .regen-btn:hover { color: var(--ctp-text); border-color: var(--ctp-overlay1); background: var(--ctp-mantle); }
+
+    .reveal-link { font-size: 0.85em; color: var(--ctp-subtext0); text-decoration: none; }
+    .reveal-link:hover { color: var(--ctp-text); text-decoration: underline; }
 
     .save-btn {
       padding: 10px 28px;
@@ -167,12 +175,15 @@
 
       <label for="streamkey">Stream Key</label>
       <div class="field-row">
-        <input type="text" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly>
+        <input type="password" value="{{ userid }}_{{ streamkey }}" id="streamkey" readonly onclick="revealKey()">
         <button type="button" class="copy-btn" onclick="copyField('streamkey')">Copy</button>
       </div>
-      <form method="post" action="{{ url_for('regen_key') }}">
-        <button type="submit" class="regen-btn">Regenerate Key</button>
-      </form>
+      <div class="key-actions">
+        <form method="post" action="{{ url_for('regen_key') }}">
+          <button type="submit" class="regen-btn">Regenerate Key</button>
+        </form>
+        <a href="#" id="reveal-link" class="reveal-link" onclick="revealKey(); return false;">Show key</a>
+      </div>
     </div>
 
     <h2 class="section-heading">Customize</h2>
@@ -195,13 +206,10 @@
 
       <div class="checkbox-row">
         <input type="checkbox" form="settings-form" id="notify_builtin" name="notify_builtin"
-               onchange="document.getElementById('notify_url').disabled = this.checked;
-                         document.getElementById('notify_builtin_config_link').style.display = this.checked ? '' : 'none';"
+               onchange="document.getElementById('notify_url').disabled = this.checked;"
                {% if notify_builtin %}checked{% endif %}>
         <label class="inline" for="notify_builtin">Use built-in notifications</label>
-        <span id="notify_builtin_config_link" class="config-link" style="display: {% if notify_builtin %}inline{% else %}none{% endif %};">
-          &mdash; <a href="{{ url_for('notifications_page') }}">click here to configure notifications</a>
-        </span>
+        <span class="config-link"> &ndash; <a href="{{ url_for('notifications_page') }}">Configure</a></span>
       </div>
 
       <div class="checkbox-row">
@@ -222,6 +230,28 @@
       const el = document.getElementById(id);
       navigator.clipboard.writeText(el.value);
     }
+
+    function revealKey() {
+      const el = document.getElementById('streamkey');
+      el.type = 'text';
+      el.classList.remove('blurred');
+      document.getElementById('reveal-link').textContent = 'Hide key';
+      document.getElementById('reveal-link').onclick = function() { hideKey(); return false; };
+    }
+
+    function hideKey() {
+      const el = document.getElementById('streamkey');
+      el.type = 'password';
+      el.classList.remove('blurred');
+      document.getElementById('reveal-link').textContent = 'Show key';
+      document.getElementById('reveal-link').onclick = function() { revealKey(); return false; };
+    }
+
+    window.addEventListener('DOMContentLoaded', function() {
+      const keyInput = document.getElementById('streamkey');
+      keyInput.type = 'text';
+      keyInput.classList.add('blurred');
+    });
   </script>
 </body>
 </html>
