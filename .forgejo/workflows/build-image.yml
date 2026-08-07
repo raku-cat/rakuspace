@@ -68,5 +68,6 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: frontend
+          file: frontend/Containerfile
           push: true
           tags: ${{ steps.tags.outputs.tags }}
