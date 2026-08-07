@@ -20,7 +20,7 @@ python RakuSpace.py                      # runs Flask's debug server on SITE_HOS
 
 Tests live in `frontend/tests/` (pytest, run `python -m pytest tests/` from `frontend/` inside the venv). No linter or build step is configured.
 
-Production runs via granian instead of the Flask debug server (see `frontend/Dockerfile`):
+Production runs via granian instead of the Flask debug server (see `frontend/Containerfile`):
 ```
 granian --host 0.0.0.0 --port 6868 --interface wsgi RakuSpace:app
 ```

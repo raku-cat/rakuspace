@@ -4,7 +4,7 @@ A small flask app serving OvenPlayer instances for named OME streams, and basic 
 
 ## Running/Installation
 To get started, you'll need to install the required pypi dependencies, modify the config to your liking, generate an empty user db, and then run the app. 
-By default this will have you running with flask's built in server, but you should probably use something like granian which this ships with by default, refer to [Dockerfile](/Dockerfile) for a usage example.
+By default this will have you running with flask's built in server, but you should probably use something like granian which this ships with by default, refer to [Containerfile](/Containerfile) for a usage example.
 ```
 $ git clone https://github.com/raku-cat/rakuspace.git && cd rakuspace/frontend
 $ python -m venv python_modules

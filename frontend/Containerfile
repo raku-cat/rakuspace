@@ -18,4 +18,6 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 RUN python setup_db.py 
 
 ENTRYPOINT ["granian"]
-CMD ["--host", "0.0.0.0", "--port", "6868", "--interface", "wsgi", "RakuSpace:app"]
+# --workers pinned at 1: live-state/notify-state and the SSE Condition are in-process
+# memory (see CLAUDE.md), so running more than one worker would desync them.
+CMD ["--host", "0.0.0.0", "--port", "6868", "--interface", "wsgi", "--workers", "1", "--access-log", "RakuSpace:app"]
