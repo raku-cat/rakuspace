@@ -7,6 +7,10 @@ on:
     paths:
       - frontend/**
       - .forgejo/workflows/build-image.yml
+  pull_request:
+    paths:
+      - frontend/**
+      - .forgejo/workflows/build-image.yml
   workflow_dispatch:
 
 enable-openid-connect: true
@@ -42,11 +46,27 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ steps.jwt.outputs.jwt }}
 
+      - name: Set image tags
+        id: tags
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            tags="git.jellydonut.ws/raku/rakuspace:pr-${{ github.event.pull_request.number }}"
+          elif [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tags="git.jellydonut.ws/raku/rakuspace:latest
+          git.jellydonut.ws/raku/rakuspace:${{ github.sha }}"
+          else
+            branch=$(echo "${{ github.ref_name }}" | tr -c 'a-zA-Z0-9' '-')
+            tags="git.jellydonut.ws/raku/rakuspace:branch-$branch"
+          fi
+          {
+            echo "tags<<EOF"
+            echo "$tags"
+            echo "EOF"
+          } >> "$FORGEJO_OUTPUT"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: frontend
           push: true
-          tags: |
-            git.jellydonut.ws/raku/rakuspace:latest
-            git.jellydonut.ws/raku/rakuspace:${{ github.sha }}
+          tags: ${{ steps.tags.outputs.tags }}
