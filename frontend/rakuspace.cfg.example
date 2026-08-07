@@ -39,3 +39,14 @@ NOTIFY_TIMEOUT_SECONDS = 3
 # Optional public base URL used to build the stream link in the payload (e.g. https://raku.party).
 # Leave empty to omit the link.
 SITE_PUBLIC_URL = ''
+
+# --- IRC chat embed (omusubi.trans IRC) ---
+# Public base URL of the irc-embed-thing instance, e.g. 'https://chat.example.com'.
+# Leave empty to disable chat embeds entirely.
+IRC_EMBED_BASE_URL = ''
+# Must be byte-identical to irc-embed-thing's server.secret / IRC_EMBED_SECRET env var
+# (32+ chars). Leave empty to disable chat embeds entirely.
+IRC_EMBED_SECRET = ''
+# Channel embedded in the /multistream multiplexer's chat pane, e.g. '#general'.
+# Leave empty to hide that pane.
+IRC_EMBED_MULTISTREAM_CHANNEL = ''

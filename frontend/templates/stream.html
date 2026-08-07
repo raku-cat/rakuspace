@@ -200,6 +200,10 @@
         <label for="offline_image_url" style="margin-top: 14px;">Offline Image</label>
         <input type="text" id="offline_image_url" name="offline_image_url" value="{{ offline_image_url or '' }}"
                placeholder="https://example.com/your-image.png">
+
+        <label for="chat_channel" style="margin-top: 14px;">Chat (Provided by omusubi.trans IRC)</label>
+        <input type="text" id="chat_channel" name="chat_channel" value="{{ chat_channel or '' }}"
+               placeholder="#yourchannel — leave blank to disable chat">
       </form>
     </div>
 

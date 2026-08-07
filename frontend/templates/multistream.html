@@ -273,6 +273,13 @@
   // The base URL used to build each stream's iframe src: LIVE_BASE + name.
   const LIVE_BASE_URL = '/live/';
 
+  // Pre-signed IRC chat embed URL for the multiplexer's chat pane, or '' if
+  // chat embeds aren't configured (blank IRC_EMBED_* config) or no channel
+  // is set for this multiplexer. When absent the pane and its menu toggle
+  // are hidden entirely rather than showing a dead pane.
+  const CHAT_URL = {{ (chat_url or "") | tojson }};
+  let chatLoaded = false;
+
   let nextId = 1;
   function makeLeaf(size) {
     return { type: 'leaf', id: nextId++, name: null, justAdded: false, size: size || 1 };
@@ -568,8 +575,31 @@
     root.appendChild(renderNode(state.root));
 
     document.body.classList.toggle('edit-mode', state.editMode);
-    document.getElementById('chat-pane').classList.toggle('hidden', !state.chatVisible);
-    document.getElementById('menu-toggle-chat').textContent = state.chatVisible ? 'Hide chat' : 'Show chat';
+
+    const chatPane = document.getElementById('chat-pane');
+    const chatToggleBtn = document.getElementById('menu-toggle-chat');
+    if (!CHAT_URL) {
+      // No channel configured for this multiplexer -- hide the pane and its
+      // menu toggle entirely instead of showing a dead, always-blank pane.
+      chatPane.classList.add('hidden');
+      chatToggleBtn.style.display = 'none';
+    } else {
+      chatPane.classList.toggle('hidden', !state.chatVisible);
+      chatToggleBtn.style.display = '';
+      chatToggleBtn.textContent = state.chatVisible ? 'Hide chat' : 'Show chat';
+
+      // Lazy load/unload: only load the iframe once shown, and unload it
+      // (back to about:blank) once hidden, rather than keeping an idle chat
+      // connection open behind a hidden pane.
+      const chatIframe = document.getElementById('chat-iframe');
+      if (state.chatVisible && !chatLoaded) {
+        chatIframe.src = CHAT_URL;
+        chatLoaded = true;
+      } else if (!state.chatVisible && chatLoaded) {
+        chatIframe.src = 'about:blank';
+        chatLoaded = false;
+      }
+    }
     document.getElementById('menu-toggle-edit').textContent = state.editMode ? 'Exit edit mode' : 'Edit layout';
 
     saveState();

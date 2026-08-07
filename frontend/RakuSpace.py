@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -14,7 +16,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response
 from flask_socketio import SocketIO, emit
-from urllib.parse import urlparse
+from urllib.parse import urlparse, quote
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -47,6 +49,11 @@ NOTIFY_TICK_SECONDS = int(app.config.get('NOTIFY_TICK_SECONDS', 5))
 NOTIFY_TIMEOUT_SECONDS = int(app.config.get('NOTIFY_TIMEOUT_SECONDS', 3))
 SITE_PUBLIC_URL = app.config.get('SITE_PUBLIC_URL', '')
 
+# --- IRC chat embed config ---
+IRC_EMBED_BASE_URL = app.config.get('IRC_EMBED_BASE_URL', '')
+IRC_EMBED_SECRET = app.config.get('IRC_EMBED_SECRET', '')
+IRC_EMBED_MULTISTREAM_CHANNEL = app.config.get('IRC_EMBED_MULTISTREAM_CHANNEL', '')
+
 # --- DB helpers ---
 def get_db():
     db = getattr(g, "_db", None)
@@ -73,6 +80,7 @@ def ensure_schema():
         "notify_on_offline": "INTEGER NOT NULL DEFAULT 0",
         "notify_config": "TEXT",
         "offline_image_url": "TEXT",
+        "chat_channel": "TEXT",
     }
     db = sqlite3.connect(DB_PATH)
     try:
@@ -112,6 +120,28 @@ def get_or_create_userkey(username, regen=False):
 def generate_stream_key(length=30):
     alphabet = string.ascii_letters + string.digits  # a-zA-Z0-9
     return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+# --- IRC chat embed ---
+def irc_embed_url(channel):
+    """Mint a signed embed URL for `channel`, or None if chat embeds aren't
+    configured or the channel is blank/invalid. Token scheme is compatible
+    with omusubi.trans's irc-embed-thing (src/token.js): a 96-bit HMAC-SHA256
+    of the canonicalized channel name, base64url-encoded with no padding.
+    Deterministic and unexpiring by design -- nothing is stored on either
+    side, the shared secret is the entire contract."""
+    if not IRC_EMBED_BASE_URL or not IRC_EMBED_SECRET or not channel:
+        return None
+    c = channel.strip()
+    if not c or any(ch in c for ch in ' \t,\x00\r\n'):
+        return None
+    if c[0] not in '#&':
+        c = '#' + c
+    c = c.lower().translate(str.maketrans('[]\\~', '{}|^'))
+    token = base64.urlsafe_b64encode(
+        hmac.new(IRC_EMBED_SECRET.encode(), c.encode(), hashlib.sha256).digest()[:12]
+    ).rstrip(b'=').decode()
+    return f"{IRC_EMBED_BASE_URL.rstrip('/')}/?channel={quote(c)}&token={token}"
 
 
 def require_auth(f):
@@ -604,7 +634,7 @@ def index():
 
 @app.route("/multistream")
 def multistream():
-    return render_template("multistream.html")
+    return render_template("multistream.html", chat_url=irc_embed_url(IRC_EMBED_MULTISTREAM_CHANNEL))
 
 @app.route("/api/check/<streamname>")
 def check_stream(streamname):
@@ -649,16 +679,18 @@ def play_stream(streamname):
     db = get_db()
     with db:
         cur = db.cursor()
-        cur.execute("SELECT stream_title, offline_image_url FROM users WHERE username=?", (streamname,))
+        cur.execute("SELECT stream_title, offline_image_url, chat_channel FROM users WHERE username=?", (streamname,))
         row = cur.fetchone()
         streamtitle = row["stream_title"] if row else None
         offline_image_url = row["offline_image_url"] if row else None
+        chat_url = irc_embed_url(row["chat_channel"] if row else None)
 
         return render_template(
             "player.html",
             streamname=streamname,
             streamtitle=streamtitle,
             offline_image_url=offline_image_url,
+            chat_url=chat_url,
             OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
             OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
             OME_APP_NAME=OME_APP_NAME
@@ -675,8 +707,8 @@ def stream_page(username):
     db = get_db()
     cur = db.cursor()
     cur.execute(
-        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline, offline_image_url "
-        "FROM users WHERE username=?",
+        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline, offline_image_url, "
+        "chat_channel FROM users WHERE username=?",
         (username,),
     )
     row = cur.fetchone()
@@ -686,6 +718,7 @@ def stream_page(username):
     notify_on_live = bool(row["notify_on_live"]) if row else True
     notify_on_offline = bool(row["notify_on_offline"]) if row else False
     offline_image_url = row["offline_image_url"] if row else None
+    chat_channel = row["chat_channel"] if row else None
 
     return render_template(
         "stream.html",
@@ -699,6 +732,7 @@ def stream_page(username):
         notify_on_live=notify_on_live,
         notify_on_offline=notify_on_offline,
         offline_image_url=offline_image_url,
+        chat_channel=chat_channel,
         notify_error=None,
     )
 
@@ -715,6 +749,7 @@ def regen_key(username):
 def save_settings(username):
     streamtitle = request.form.get("streamtitle")
     offline_image_url = (request.form.get("offline_image_url") or "").strip()
+    chat_channel = (request.form.get("chat_channel") or "").strip()
     notify_url = (request.form.get("notify_url") or "").strip()
     notify_builtin = request.form.get("notify_builtin") == "on"
     notify_on_live = request.form.get("notify_on_live") == "on"
@@ -734,6 +769,7 @@ def save_settings(username):
             streamtitle=streamtitle,
             rtmp_urls=RTMP_URLS,
             offline_image_url=offline_image_url,
+            chat_channel=chat_channel,
             notify_url=notify_url,
             notify_builtin=notify_builtin,
             notify_on_live=notify_on_live,
@@ -744,11 +780,12 @@ def save_settings(username):
     db = get_db()
     with db:
         db.execute(
-            "UPDATE users SET stream_title=?, offline_image_url=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
-            "notify_on_offline=? WHERE username=?",
+            "UPDATE users SET stream_title=?, offline_image_url=?, chat_channel=?, notify_url=?, notify_builtin=?, "
+            "notify_on_live=?, notify_on_offline=? WHERE username=?",
             (
                 streamtitle,
                 offline_image_url or None,
+                chat_channel or None,
                 notify_url or None,
                 int(notify_builtin),
                 int(notify_on_live),
