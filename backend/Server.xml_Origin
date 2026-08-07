@@ -52,7 +52,7 @@
 
 			<!-- Settings for applications -->
 			<AdmissionWebhooks>
-				<ControlServerUrl>http://0.0.0.0:6868/verify</ControlServerUrl>
+				<ControlServerUrl>http://0.0.0.0:6868/auth/ome</ControlServerUrl>
 				<Timeout>3000</Timeout>
 				<Enables>
 					<Providers>rtmp</Providers>

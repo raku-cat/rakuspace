@@ -2,11 +2,11 @@
 <html>
 <head>
   <title>Watching {{ streamname }}</title>
-  <script src="https://cdn.jsdelivr.net/npm/ovenplayer/dist/ovenplayer.js"></script>
+  <script src="{{ url_for('static', filename='ovenplayer/ovenplayer.js') }}"></script>
 </head>
 <body style="margin:0; background:black; display:flex; align-items:center; justify-content:center; height:100vh;">
   <div id="player" style="width:100%; height:100%;"></div>
-  <div id="offline" style="position:absolute; color:white; font-size:2em; display:none;">
+  <div id="offline" style="position:absolute; color:white; font-size:2em; background:black; display:none;">
     {{ streamname }} is offline
   </div>
 
@@ -15,16 +15,20 @@
     const host = "{{ OME_PUBLISHER_HOST }}";
     const port = "{{ OME_PUBLISHER_PORT }}"
     const appName = "{{ OME_APP_NAME }}";
+    const streamTitle = "{{ streamtitle }}";
 
     const player = OvenPlayer.create("player", {
       sources: [{
         type: "webrtc",
-        file: `wss://${host}:${port}/${appName}/${streamName}`
+        file: `wss://${host}:${port}/${appName}/${streamName}`,
+        overrideNative: true,
       }],
       autoStart: true,
+      playbackRates: [1],
       disableSeekUI: true,
-      showBigPlayButton: false,
+      showBigPlayButton: true,
       expandFullScreenUI: true,
+      title: `${streamTitle}`
       
     });
 
@@ -32,19 +36,37 @@
 
     function setOffline() {
       offlineMsg.style.display = "block";
-      document.getElementById('player').style.display = "none";
       retryStream();
     }
     function setOnline() {
       offlineMsg.style.display = "none";
       document.getElementById('player').style.display = "block";
+      player.play();
     }
 
+
+    function checkAutoplay() {
+        if(player.getState() != "playing") {
+            //console.log("fooey")
+            const audio = new Audio();
+            audio.play().then(() => {
+                return;
+            }).catch(error => {
+                // Autoplay was prevented (e.g., by browser policy)
+                console.log("Autoplay prevented:", error.name);
+                player.setMute(true);
+                setOnline();
+            });
+        }
+    }
+    
     // Listen for events
     player.on("error", setOffline);
     player.on("ended", setOffline);
     player.on("stateChanged", (e) => {
+      //console.log("nani");
       if(e.newstate === "playing") setOnline();
+      if(e.newstate === "loading") checkAutoplay();
     });
 
     // Retry logic

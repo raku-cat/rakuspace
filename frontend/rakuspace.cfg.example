@@ -1,6 +1,10 @@
 # Host of your RTMP provider (where users will be streaming to).
 OME_PROVIDER_HOST = 'localhost'
 OME_RTMP_PROVIDER_PORT = '1935'
+# Additional hostnames that should be accepted as equivalent to
+# OME_PROVIDER_HOST in the AdmissionWebhook (e.g. an internal/docker
+# hostname alongside the public one). List of strings, can be empty.
+RTMP_ALT_HOSTS = []
 # App name as configured in OME
 OME_APP_NAME = 'app'
 # Host of your webrtc publisher, if you aren't using a separate edge and
@@ -17,6 +21,21 @@ SITE_PORT='5000'
 # as the script.
 DB_PATH = 'users.db'
 
-# Enable reading headers from http basic auth, put behind a default 
+# Enable reading headers from http basic auth, put behind a default
 # disabled option due to security risks.
 BASICAUTH_ENABLED = 'False'
+
+# --- Go-live notifications ---
+# Basic SSRF validation of user-supplied notify URLs (scheme + block private/loopback hosts).
+NOTIFY_VALIDATE_URLS = 'True'
+# Restrict notify URLs to an admin-defined host whitelist.
+NOTIFY_URL_WHITELIST_ENABLED = 'False'
+NOTIFY_URL_WHITELIST = []            # list of allowed hostnames, e.g. ['discord.com']
+# Debounce: how long a stream state must be stable before we notify, and how often we scan.
+NOTIFY_SETTLE_SECONDS = 15
+NOTIFY_TICK_SECONDS = 5
+# HTTP timeout for the outbound notification POST.
+NOTIFY_TIMEOUT_SECONDS = 3
+# Optional public base URL used to build the stream link in the payload (e.g. https://raku.party).
+# Leave empty to omit the link.
+SITE_PUBLIC_URL = ''

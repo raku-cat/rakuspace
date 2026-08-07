@@ -11,6 +11,7 @@ COPY RakuSpace.py /app
 COPY setup_db.py /app
 COPY requirements.txt /app
 COPY templates/ /app/templates
+COPY static/ /app/static
 COPY rakuspace.cfg.example /app/rakuspace.cfg
 
 RUN pip install --no-cache-dir -r /app/requirements.txt

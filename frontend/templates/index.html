@@ -2,20 +2,218 @@
 <html>
 <head>
   <title>RakuSpace</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 48px;
+      background: #111;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    header .site-name {
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      color: #e0e0e0;
+    }
+    header a.login-btn {
+      font-size: 0.8em;
+      color: #888;
+      text-decoration: none;
+      padding: 4px 10px;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    header a.login-btn:hover { color: #bbb; border-color: #555; }
+
+    /* Main */
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card {
+      background: #242424;
+      border: 1px solid #2e2e2e;
+      border-radius: 8px;
+      padding: 28px 32px;
+      width: 340px;
+    }
+
+    .card h1 {
+      margin: 0 0 18px 0;
+      font-size: 1.1em;
+      font-weight: 600;
+      color: #ccc;
+    }
+
+    #stream-form { display: flex; gap: 6px; }
+    #stream-input {
+      flex: 1;
+      padding: 7px 10px;
+      font-size: 1em;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      color: #e0e0e0;
+      outline: none;
+    }
+    #stream-input:focus { border-color: #555; }
+    #stream-input::placeholder { color: #555; }
+
+    button[type="submit"] {
+      padding: 7px 14px;
+      font-size: 1em;
+      background: #333;
+      color: #ddd;
+      border: 1px solid #444;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button[type="submit"]:hover { background: #3d3d3d; }
+
+    #stream-hint { font-size: 0.8em; height: 1.2em; margin-top: 6px; }
+    #stream-hint.known { color: #5a5; }
+    #stream-hint.unknown { color: #c55; }
+
+    /* Recent */
+    #recent {
+      margin-top: 20px;
+      padding-top: 16px;
+      border-top: 1px solid #2e2e2e;
+    }
+    .recent-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .recent-header b { font-size: 0.85em; color: #aaa; }
+    #clear-btn {
+      font-size: 0.75em;
+      color: #666;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 0;
+    }
+    #clear-btn:hover { color: #999; }
+
+    #recent-list {
+      margin: 0;
+      padding-left: 1.1em;
+      list-style: disc;
+    }
+    #recent-list li { margin: 3px 0; font-size: 0.9em; }
+    #recent-list a { color: #7aa; text-decoration: none; }
+    #recent-list a:hover { text-decoration: underline; }
+  </style>
 </head>
-<body class="flex flex-col items-center justify-center h-screen">
-  <h1>Enter a stream name</h1>
-  <form id="stream-form">
-    <input id="stream-input" type="text" placeholder="stream name">
-    <button type="submit">Watch</button>
-  </form>
+<body>
+
+  <header>
+    <span class="site-name">RakuSpace</span>
+    <a class="login-btn" href="/stream_info">Streamer Settings</a>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Watch a stream</h1>
+
+      <form id="stream-form">
+        <input id="stream-input" type="text" placeholder="stream name" autocomplete="off">
+        <button type="submit">Watch</button>
+      </form>
+      <div id="stream-hint"></div>
+
+      <div id="recent" style="display:none">
+        <div class="recent-header">
+          <b>Recent Streams</b>
+          <button id="clear-btn">clear</button>
+        </div>
+        <ul id="recent-list"></ul>
+      </div>
+    </div>
+  </main>
 
   <script>
+    const input = document.getElementById("stream-input");
+    const hint = document.getElementById("stream-hint");
+    const recentDiv = document.getElementById("recent");
+    const recentList = document.getElementById("recent-list");
+
+    // --- Recent streams (localStorage) ---
+    function getRecent() {
+      try { return JSON.parse(localStorage.getItem("recentStreams") || "[]"); }
+      catch { return []; }
+    }
+    function saveRecent(name) {
+      let list = getRecent().filter(n => n !== name);
+      list.unshift(name);
+      list = list.slice(0, 5);
+      localStorage.setItem("recentStreams", JSON.stringify(list));
+    }
+    function renderRecent() {
+      const list = getRecent();
+      if (list.length === 0) { recentDiv.style.display = "none"; return; }
+      recentDiv.style.display = "";
+      recentList.innerHTML = list.map(n =>
+        `<li><a href="/live/${encodeURIComponent(n)}">${n}</a></li>`
+      ).join("");
+    }
+    renderRecent();
+
+    document.getElementById("clear-btn").addEventListener("click", function() {
+      localStorage.removeItem("recentStreams");
+      renderRecent();
+    });
+
+    // --- Stream name validation ---
+    let debounceTimer;
+    input.addEventListener("input", function() {
+      const name = input.value.trim();
+      clearTimeout(debounceTimer);
+      hint.textContent = "";
+      hint.className = "";
+      if (!name) return;
+      debounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/check/" + encodeURIComponent(name));
+          const data = await res.json();
+          if (data.known) {
+            hint.textContent = "✓ known streamer";
+            hint.className = "known";
+          } else {
+            hint.textContent = "✗ unknown stream name";
+            hint.className = "unknown";
+          }
+        } catch { hint.textContent = ""; }
+      }, 400);
+    });
+
+    // --- Form submit ---
     document.getElementById("stream-form").addEventListener("submit", function(e) {
       e.preventDefault();
-      const name = document.getElementById("stream-input").value.trim();
-      if(name) {
-        window.location.href = "/" + encodeURIComponent(name);
+      const name = input.value.trim();
+      if (name) {
+        saveRecent(name);
+        window.location.href = "/live/" + encodeURIComponent(name);
       }
     });
   </script>

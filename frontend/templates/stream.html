@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,10 +7,56 @@
 </head>
 <body>
   <h1>Streaming Info for {{ username }}</h1>
-  <p><b>RTMP URL:</b> <input type="text" value="{{ rtmp_url }}" readonly size="50"></p>
-  <p><b>Stream Key:</b> <input type="text" value="{{ userid }}_{{ streamkey }}" readonly size="50"></p>
+  <form>
+      <label for="rtmp"><b>RTMP URL:</b></label> 
+      <input type="text" value="{{ rtmp_url }}" id="rtmp" readonly size="50">
+  </form>
   <form method="post" action="{{ url_for('regen_key') }}">
+      <label for="streamkey"><b>Stream Key:</b></label> 
+      <input type="text" value="{{ userid }}_{{ streamkey }}" readonly size="50">
       <button type="submit">Regenerate Key</button>
+  </form>
+  <form method="post" action="{{ url_for('set_title') }}">
+      <label for="streamtitle"><b>Stream Title:</b></label>
+      <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}" size="50">
+      <button type="submit">Update Title</button>
+  </form>
+
+  <h2>Go-Live Notifications</h2>
+  {% if notify_error %}
+  <p style="color: red;">{{ notify_error }}</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('set_notify') }}">
+      <p>
+        <label for="notify_url"><b>Notification URL:</b></label>
+        <input type="text" id="notify_url" name="notify_url" value="{{ notify_url or '' }}" size="50"
+               placeholder="https://example.com/your-webhook" {% if notify_builtin %}disabled{% endif %}>
+      </p>
+      <p>
+        <label for="notify_builtin">
+          <input type="checkbox" id="notify_builtin" name="notify_builtin"
+                 onchange="document.getElementById('notify_url').disabled = this.checked;
+                           document.getElementById('notify_builtin_config_link').style.display = this.checked ? '' : 'none';"
+                 {% if notify_builtin %}checked{% endif %}>
+          Use built-in notifications
+        </label>
+        <span id="notify_builtin_config_link" style="display: {% if notify_builtin %}inline{% else %}none{% endif %};">
+          &mdash; <a href="{{ url_for('notifications_page') }}">click here to configure notifications</a>
+        </span>
+      </p>
+      <p>
+        <label for="notify_on_live">
+          <input type="checkbox" id="notify_on_live" name="notify_on_live" {% if notify_on_live %}checked{% endif %}>
+          Notify when stream goes live
+        </label>
+      </p>
+      <p>
+        <label for="notify_on_offline">
+          <input type="checkbox" id="notify_on_offline" name="notify_on_offline" {% if notify_on_offline %}checked{% endif %}>
+          Notify when stream goes offline
+        </label>
+      </p>
+      <button type="submit">Save Notification Settings</button>
   </form>
 </body>
 </html>

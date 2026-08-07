@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Notification Settings</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+
+    body {
+      font-family: sans-serif;
+      margin: 0;
+      min-height: 100vh;
+      background: #1a1a1a;
+      color: #e0e0e0;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 48px;
+      background: #111;
+      border-bottom: 1px solid #2a2a2a;
+    }
+    header .site-name { font-weight: 600; letter-spacing: 0.03em; color: #e0e0e0; }
+    header a.login-btn {
+      font-size: 0.8em;
+      color: #888;
+      text-decoration: none;
+      padding: 4px 10px;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    header a.login-btn:hover { color: #bbb; border-color: #555; }
+
+    main {
+      max-width: 640px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    h1 { font-size: 1.3em; margin: 0 0 4px 0; color: #ccc; }
+    .sub { color: #888; font-size: 0.9em; margin: 0 0 20px 0; }
+
+    .card {
+      background: #242424;
+      border: 1px solid #2e2e2e;
+      border-radius: 8px;
+      padding: 20px 24px;
+      margin-bottom: 20px;
+    }
+    .card h2 { margin: 0 0 4px 0; font-size: 1.05em; color: #ccc; }
+    .card .hint { font-size: 0.8em; color: #777; margin: 0 0 14px 0; }
+
+    label { display: block; font-size: 0.85em; color: #aaa; margin: 12px 0 4px; }
+    label.inline { display: inline; margin: 0 0 0 6px; color: #ddd; }
+
+    input[type="text"], input[type="password"], input[type="number"], textarea, select {
+      width: 100%;
+      padding: 7px 10px;
+      font-size: 0.95em;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+      color: #e0e0e0;
+      outline: none;
+      font-family: inherit;
+    }
+    input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus,
+    textarea:focus, select:focus { border-color: #555; }
+    input[type="color"] {
+      width: 60px;
+      height: 32px;
+      padding: 2px;
+      background: #1a1a1a;
+      border: 1px solid #3a3a3a;
+      border-radius: 4px;
+    }
+    textarea { resize: vertical; min-height: 50px; }
+
+    .checkbox-row { display: flex; align-items: center; margin: 4px 0 14px; }
+    .checkbox-row input { width: auto; margin: 0; }
+
+    .row { display: flex; gap: 12px; }
+    .row > div { flex: 1; }
+
+    .variables { font-size: 0.78em; color: #666; margin-top: 2px; }
+    .variables code { background: #1a1a1a; border: 1px solid #333; border-radius: 3px; padding: 1px 4px; }
+
+    .event-panel { border-top: 1px dashed #333; margin-top: 14px; padding-top: 6px; }
+
+    button {
+      padding: 8px 16px;
+      font-size: 0.95em;
+      background: #333;
+      color: #ddd;
+      border: 1px solid #444;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:hover { background: #3d3d3d; }
+    button.secondary { background: #262626; font-size: 0.85em; padding: 6px 12px; }
+
+    .actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
+
+    .banner {
+      padding: 10px 14px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+      font-size: 0.9em;
+    }
+    .banner.error { background: #3a1f1f; border: 1px solid #5a2a2a; color: #e88; }
+    .banner.status { background: #1f2f22; border: 1px solid #2f4a34; color: #8c8; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="site-name">RakuSpace</span>
+    <a class="login-btn" href="{{ url_for('stream_page') }}">&larr; Back to Streamer Settings</a>
+  </header>
+
+  <main>
+    <h1>Notification Settings</h1>
+    <p class="sub">
+      Configure the built-in Discord and IRC notifiers for {{ username }}. Whether these actually
+      fire is controlled by "Notify when stream goes live/offline" back on the streamer settings
+      page &mdash; leaving an event unconfigured here or that toggle off simply means nothing is sent
+      for it.
+    </p>
+
+    {% if notify_error %}
+    <div class="banner error">{{ notify_error }}</div>
+    {% endif %}
+    {% if test_status %}
+    <div class="banner status">{{ test_status }}</div>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('set_notifications') }}" id="notify-form">
+
+      <!-- Discord -->
+      <div class="card">
+        <h2>Discord</h2>
+        <p class="hint">Posts an embed to a Discord webhook.</p>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="discord_enabled" name="discord_enabled" {% if cfg.discord.enabled %}checked{% endif %}>
+          <label class="inline" for="discord_enabled">Enable Discord notifications</label>
+        </div>
+
+        <label for="discord_webhook_url">Webhook URL</label>
+        <input type="text" id="discord_webhook_url" name="discord_webhook_url"
+               value="{{ cfg.discord.webhook_url or '' }}" placeholder="https://discord.com/api/webhooks/...">
+
+        <label for="discord_event_select">Editing event</label>
+        <select id="discord_event_select" onchange="showEvent('discord', this.value)">
+          <option value="online">Online (stream goes live)</option>
+          <option value="offline">Offline (stream ends)</option>
+        </select>
+
+        <div class="event-panel" id="discord_online_panel">
+          <label for="discord_online_content">Message content (outside the embed)</label>
+          <input type="text" id="discord_online_content" name="discord_online_content" value="{{ cfg.discord.online.content or '' }}">
+
+          <label for="discord_online_title">Embed title</label>
+          <input type="text" id="discord_online_title" name="discord_online_title" value="{{ cfg.discord.online.title or '' }}">
+
+          <label for="discord_online_description">Embed description</label>
+          <textarea id="discord_online_description" name="discord_online_description">{{ cfg.discord.online.description or '' }}</textarea>
+
+          <div class="row">
+            <div>
+              <label for="discord_online_color">Embed color</label>
+              <input type="color" id="discord_online_color" name="discord_online_color" value="{{ cfg.discord.online.color or '#57F287' }}">
+            </div>
+          </div>
+        </div>
+
+        <div class="event-panel" id="discord_offline_panel" style="display:none;">
+          <label for="discord_offline_content">Message content (outside the embed)</label>
+          <input type="text" id="discord_offline_content" name="discord_offline_content" value="{{ cfg.discord.offline.content or '' }}">
+
+          <label for="discord_offline_title">Embed title</label>
+          <input type="text" id="discord_offline_title" name="discord_offline_title" value="{{ cfg.discord.offline.title or '' }}">
+
+          <label for="discord_offline_description">Embed description</label>
+          <textarea id="discord_offline_description" name="discord_offline_description">{{ cfg.discord.offline.description or '' }}</textarea>
+
+          <div class="row">
+            <div>
+              <label for="discord_offline_color">Embed color</label>
+              <input type="color" id="discord_offline_color" name="discord_offline_color" value="{{ cfg.discord.offline.color or '#808080' }}">
+            </div>
+          </div>
+        </div>
+
+        <p class="variables">Variables: <code>{username}</code> <code>{title}</code> <code>{url}</code></p>
+
+        <div class="actions">
+          <button type="submit" name="channel" value="discord" formaction="{{ url_for('test_notification') }}" class="secondary">Send Discord test</button>
+        </div>
+      </div>
+
+      <!-- IRC -->
+      <div class="card">
+        <h2>IRC</h2>
+        <p class="hint">Connects, joins a channel, and sends a plaintext message.</p>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="irc_enabled" name="irc_enabled" {% if cfg.irc.enabled %}checked{% endif %}>
+          <label class="inline" for="irc_enabled">Enable IRC notifications</label>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="irc_server">Server</label>
+            <input type="text" id="irc_server" name="irc_server" value="{{ cfg.irc.server or '' }}" placeholder="irc.example.com">
+          </div>
+          <div style="flex: 0 0 100px;">
+            <label for="irc_port">Port</label>
+            <input type="number" id="irc_port" name="irc_port" value="{{ cfg.irc.port or 6697 }}">
+          </div>
+        </div>
+
+        <div class="checkbox-row">
+          <input type="checkbox" id="irc_tls" name="irc_tls" {% if cfg.irc.tls %}checked{% endif %}>
+          <label class="inline" for="irc_tls">Use TLS (SSL)</label>
+        </div>
+
+        <label for="irc_server_password">Server password (optional)</label>
+        <input type="password" id="irc_server_password" name="irc_server_password" value="{{ cfg.irc.server_password or '' }}">
+
+        <div class="row">
+          <div>
+            <label for="irc_sasl_user">SASL username (optional)</label>
+            <input type="text" id="irc_sasl_user" name="irc_sasl_user" value="{{ cfg.irc.sasl_user or '' }}">
+          </div>
+          <div>
+            <label for="irc_sasl_password">SASL password (optional)</label>
+            <input type="password" id="irc_sasl_password" name="irc_sasl_password" value="{{ cfg.irc.sasl_password or '' }}">
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label for="irc_nick">Bot nickname (optional)</label>
+            <input type="text" id="irc_nick" name="irc_nick" value="{{ cfg.irc.nick or '' }}" placeholder="falls back to SASL user, then 'rakuspace'">
+          </div>
+          <div>
+            <label for="irc_channel">Channel</label>
+            <input type="text" id="irc_channel" name="irc_channel" value="{{ cfg.irc.channel or '' }}" placeholder="#announce">
+          </div>
+        </div>
+
+        <label for="irc_event_select">Editing event</label>
+        <select id="irc_event_select" onchange="showEvent('irc', this.value)">
+          <option value="online">Online (stream goes live)</option>
+          <option value="offline">Offline (stream ends)</option>
+        </select>
+
+        <div class="event-panel" id="irc_online_panel">
+          <label for="irc_online_body">Message</label>
+          <textarea id="irc_online_body" name="irc_online_body">{{ cfg.irc.online.body or '' }}</textarea>
+        </div>
+
+        <div class="event-panel" id="irc_offline_panel" style="display:none;">
+          <label for="irc_offline_body">Message</label>
+          <textarea id="irc_offline_body" name="irc_offline_body">{{ cfg.irc.offline.body or '' }}</textarea>
+        </div>
+
+        <p class="variables">Variables: <code>{username}</code> <code>{title}</code> <code>{url}</code></p>
+
+        <div class="actions">
+          <button type="submit" name="channel" value="irc" formaction="{{ url_for('test_notification') }}" class="secondary">Send IRC test</button>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="submit">Save Notification Settings</button>
+      </div>
+    </form>
+  </main>
+
+  <script>
+    function showEvent(channel, event) {
+      document.getElementById(channel + "_online_panel").style.display = (event === "online") ? "" : "none";
+      document.getElementById(channel + "_offline_panel").style.display = (event === "offline") ? "" : "none";
+    }
+  </script>
+</body>
+</html>

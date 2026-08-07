@@ -20,7 +20,13 @@ def init_db():
             CREATE TABLE IF NOT EXISTS users (
                 userid INTEGER PRIMARY KEY AUTOINCREMENT,
                 username TEXT UNIQUE NOT NULL,
-                streamkey TEXT NOT NULL
+                streamkey TEXT NOT NULL,
+                stream_title TEXT,
+                notify_url TEXT,
+                notify_builtin INTEGER NOT NULL DEFAULT 0,
+                notify_on_live INTEGER NOT NULL DEFAULT 1,
+                notify_on_offline INTEGER NOT NULL DEFAULT 0,
+                notify_config TEXT
             )
         """)
 
