@@ -199,11 +199,9 @@
         <label for="streamtitle">Stream Title</label>
         <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}">
 
-        {% if next_prefix == "/next" %}
         <label for="offline_image_url" style="margin-top: 14px;">Offline Image</label>
         <input type="text" id="offline_image_url" name="offline_image_url" value="{{ offline_image_url or '' }}"
                placeholder="https://example.com/your-image.png">
-        {% endif %}
       </form>
     </div>
 

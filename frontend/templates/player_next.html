@@ -282,10 +282,18 @@
     }
 
     // Click anywhere on the stage (but not on the controls bar) to toggle
-    // play/pause, and briefly reveal the controls for touch devices.
+    // play/pause, and briefly reveal the controls for touch devices. While
+    // offline, there's nothing loaded to toggle (loadStream() only ever runs
+    // off the SSE "live" event), so this instead always attempts a connection
+    // directly against OME -- a manual escape hatch that works even if our
+    // tracked liveState is stale (e.g. right after a server restart).
     stage.addEventListener("click", (e) => {
       if (e.target.closest("#controls")) return;
-      togglePlay();
+      if (offlineMsg.style.display === "flex") {
+        loadStream();
+      } else {
+        togglePlay();
+      }
       stage.classList.add("show-ui");
       clearTimeout(stage._uiTimer);
       stage._uiTimer = setTimeout(() => stage.classList.remove("show-ui"), 2500);

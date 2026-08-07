@@ -769,12 +769,7 @@ def regen_key(username):
 def save_settings(username):
     next_prefix = "/next" if request.form.get("next_prefix") == "/next" else ""
     streamtitle = request.form.get("streamtitle")
-    # The offline-image field is only rendered under /next/stream_info; when
-    # posted from the canonical settings page it's absent, so leave the
-    # stored value untouched rather than clobbering it with a blank.
-    offline_image_url = request.form.get("offline_image_url")
-    if offline_image_url is not None:
-        offline_image_url = offline_image_url.strip()
+    offline_image_url = (request.form.get("offline_image_url") or "").strip()
     notify_url = (request.form.get("notify_url") or "").strip()
     notify_builtin = request.form.get("notify_builtin") == "on"
     notify_on_live = request.form.get("notify_on_live") == "on"
@@ -799,33 +794,19 @@ def save_settings(username):
 
     db = get_db()
     with db:
-        if offline_image_url is not None:
-            db.execute(
-                "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
-                "notify_on_offline=?, offline_image_url=? WHERE username=?",
-                (
-                    streamtitle,
-                    notify_url or None,
-                    int(notify_builtin),
-                    int(notify_on_live),
-                    int(notify_on_offline),
-                    offline_image_url or None,
-                    username,
-                ),
-            )
-        else:
-            db.execute(
-                "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
-                "notify_on_offline=? WHERE username=?",
-                (
-                    streamtitle,
-                    notify_url or None,
-                    int(notify_builtin),
-                    int(notify_on_live),
-                    int(notify_on_offline),
-                    username,
-                ),
-            )
+        db.execute(
+            "UPDATE users SET stream_title=?, offline_image_url=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
+            "notify_on_offline=? WHERE username=?",
+            (
+                streamtitle,
+                offline_image_url or None,
+                notify_url or None,
+                int(notify_builtin),
+                int(notify_on_live),
+                int(notify_on_offline),
+                username,
+            ),
+        )
 
     return redirect(url_for("stream_page_next" if next_prefix == "/next" else "stream_page"))
 
