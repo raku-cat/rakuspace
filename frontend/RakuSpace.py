@@ -76,6 +76,7 @@ def ensure_schema():
         "notify_on_live": "INTEGER NOT NULL DEFAULT 1",
         "notify_on_offline": "INTEGER NOT NULL DEFAULT 0",
         "notify_config": "TEXT",
+        "offline_image_url": "TEXT",
     }
     db = sqlite3.connect(DB_PATH)
     try:
@@ -588,6 +589,15 @@ def get_stream_title(streamname):
         return row["stream_title"] if row else None
 
 
+def get_stream_offline_image(streamname):
+    db = get_db()
+    with db:
+        cur = db.cursor()
+        cur.execute("SELECT offline_image_url FROM users WHERE username=?", (streamname,))
+        row = cur.fetchone()
+        return row["offline_image_url"] if row else None
+
+
 @app.route("/")
 def index():
     return render_template("index.html", next_prefix="")
@@ -631,10 +641,12 @@ def play_stream(streamname):
 @app.route("/next/live/<streamname>")
 def play_stream_next(streamname):
     streamtitle = get_stream_title(streamname)
+    offline_image_url = get_stream_offline_image(streamname)
     return render_template(
         "player_next.html",
         streamname=streamname,
         streamtitle=streamtitle,
+        offline_image_url=offline_image_url,
         OME_LLHLS_HOST=OME_LLHLS_HOST,
         OME_LLHLS_PORT=OME_LLHLS_PORT,
         OME_APP_NAME=OME_APP_NAME
@@ -648,53 +660,67 @@ def next_passthrough(subpath):
     return redirect("/" + subpath)
 
 
-@app.route("/stream_info")
-@require_auth
-def stream_page(username):
-    # In production this comes from Authelia/NGINX via REMOTE_USER header
-
+def _render_stream_page(username, next_prefix="", **overrides):
     userid, streamkey = get_or_create_userkey(username)
 
     db = get_db()
     cur = db.cursor()
     cur.execute(
-        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline "
+        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline, offline_image_url "
         "FROM users WHERE username=?",
         (username,),
     )
     row = cur.fetchone()
-    streamtitle = row["stream_title"] if row else None
-    notify_url = row["notify_url"] if row else None
-    notify_builtin = bool(row["notify_builtin"]) if row else False
-    notify_on_live = bool(row["notify_on_live"]) if row else True
-    notify_on_offline = bool(row["notify_on_offline"]) if row else False
+    context = {
+        "username": username,
+        "userid": userid,
+        "streamkey": streamkey,
+        "streamtitle": row["stream_title"] if row else None,
+        "rtmp_urls": RTMP_URLS,
+        "notify_url": row["notify_url"] if row else None,
+        "notify_builtin": bool(row["notify_builtin"]) if row else False,
+        "notify_on_live": bool(row["notify_on_live"]) if row else True,
+        "notify_on_offline": bool(row["notify_on_offline"]) if row else False,
+        "offline_image_url": row["offline_image_url"] if row else None,
+        "notify_error": None,
+        "next_prefix": next_prefix,
+    }
+    context.update(overrides)
+    return render_template("stream.html", **context)
 
-    return render_template(
-        "stream.html",
-        username=username,
-        userid=userid,
-        streamkey=streamkey,
-        streamtitle=streamtitle,
-        rtmp_urls=RTMP_URLS,
-        notify_url=notify_url,
-        notify_builtin=notify_builtin,
-        notify_on_live=notify_on_live,
-        notify_on_offline=notify_on_offline,
-        notify_error=None,
-    )
+
+@app.route("/stream_info")
+@require_auth
+def stream_page(username):
+    # In production this comes from Authelia/NGINX via REMOTE_USER header
+    return _render_stream_page(username, next_prefix="")
+
+
+@app.route("/next/stream_info")
+@require_auth
+def stream_page_next(username):
+    return _render_stream_page(username, next_prefix="/next")
 
 
 @app.route("/stream_info/regen_key", methods=["POST"])
 @require_auth
 def regen_key(username):
+    dest = "stream_page_next" if request.form.get("next_prefix") == "/next" else "stream_page"
     get_or_create_userkey(username, regen=True)
-    return redirect(url_for("stream_page"))
+    return redirect(url_for(dest))
 
 
 @app.route("/stream_info/save_settings", methods=["POST"])
 @require_auth
 def save_settings(username):
+    next_prefix = "/next" if request.form.get("next_prefix") == "/next" else ""
     streamtitle = request.form.get("streamtitle")
+    # The offline-image field is only rendered under /next/stream_info; when
+    # posted from the canonical settings page it's absent, so leave the
+    # stored value untouched rather than clobbering it with a blank.
+    offline_image_url = request.form.get("offline_image_url")
+    if offline_image_url is not None:
+        offline_image_url = offline_image_url.strip()
     notify_url = (request.form.get("notify_url") or "").strip()
     notify_builtin = request.form.get("notify_builtin") == "on"
     notify_on_live = request.form.get("notify_on_live") == "on"
@@ -705,14 +731,11 @@ def save_settings(username):
         error = _validate_notify_url(notify_url)
 
     if error:
-        userid, streamkey = get_or_create_userkey(username)
-        return render_template(
-            "stream.html",
-            username=username,
-            userid=userid,
-            streamkey=streamkey,
+        return _render_stream_page(
+            username,
+            next_prefix=next_prefix,
             streamtitle=streamtitle,
-            rtmp_urls=RTMP_URLS,
+            offline_image_url=offline_image_url,
             notify_url=notify_url,
             notify_builtin=notify_builtin,
             notify_on_live=notify_on_live,
@@ -722,13 +745,35 @@ def save_settings(username):
 
     db = get_db()
     with db:
-        db.execute(
-            "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, notify_on_offline=? "
-            "WHERE username=?",
-            (streamtitle, notify_url or None, int(notify_builtin), int(notify_on_live), int(notify_on_offline), username),
-        )
+        if offline_image_url is not None:
+            db.execute(
+                "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
+                "notify_on_offline=?, offline_image_url=? WHERE username=?",
+                (
+                    streamtitle,
+                    notify_url or None,
+                    int(notify_builtin),
+                    int(notify_on_live),
+                    int(notify_on_offline),
+                    offline_image_url or None,
+                    username,
+                ),
+            )
+        else:
+            db.execute(
+                "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
+                "notify_on_offline=? WHERE username=?",
+                (
+                    streamtitle,
+                    notify_url or None,
+                    int(notify_builtin),
+                    int(notify_on_live),
+                    int(notify_on_offline),
+                    username,
+                ),
+            )
 
-    return redirect(url_for("stream_page"))
+    return redirect(url_for("stream_page_next" if next_prefix == "/next" else "stream_page"))
 
 
 @app.route("/stream_info/notifications")
