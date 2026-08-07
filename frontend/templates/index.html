@@ -40,6 +40,35 @@
     }
     header a.login-btn:hover { color: #bbb; border-color: #555; }
 
+    header .header-links {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    header a.multistream-link {
+      position: relative;
+      font-size: 0.8em;
+      color: #888;
+      text-decoration: none;
+      padding: 4px 10px;
+      border: 1px solid #333;
+      border-radius: 4px;
+    }
+    header a.multistream-link:hover { color: #bbb; border-color: #555; }
+    header a.multistream-link .new-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #c33;
+      color: #fff;
+      font-size: 0.65em;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      padding: 1px 4px;
+      border-radius: 3px;
+      line-height: 1.4;
+    }
+
     /* Main */
     main {
       flex: 1;
@@ -129,7 +158,10 @@
 
   <header>
     <span class="site-name">RakuSpace</span>
-    <a class="login-btn" href="/stream_info">Streamer Settings</a>
+    <div class="header-links">
+      <a class="multistream-link" href="/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
+      <a class="login-btn" href="/stream_info">Streamer Settings</a>
+    </div>
   </header>
 
   <main>

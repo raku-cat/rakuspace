@@ -573,6 +573,10 @@ threading.Thread(target=_notify_reconciler, daemon=True).start()
 def index():
     return render_template("index.html")
 
+@app.route("/multistream")
+def multistream():
+    return render_template("multistream.html")
+
 @app.route("/api/check/<streamname>")
 def check_stream(streamname):
     db = get_db()
