@@ -12,7 +12,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from functools import wraps
-from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort
+from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response
 from flask_socketio import SocketIO, emit
 from urllib.parse import urlparse
 
@@ -72,6 +72,7 @@ def ensure_schema():
         "notify_on_live": "INTEGER NOT NULL DEFAULT 1",
         "notify_on_offline": "INTEGER NOT NULL DEFAULT 0",
         "notify_config": "TEXT",
+        "offline_image_url": "TEXT",
     }
     db = sqlite3.connect(DB_PATH)
     try:
@@ -171,6 +172,29 @@ def _set_notify_state(userid, state):
                 "changed_at": time.monotonic(),
                 "notified_state": entry["notified_state"] if entry else None,
             }
+
+
+# --- Live-state push (for player pages) ---
+# Same OME opening/closing events that feed _notify_state above also drive
+# this, but unlike the notifier there's no settle delay: players should
+# reflect OME's actual state as fast as it arrives. In-memory and
+# single-process, like _notify_state -- fine as long as this app runs as one
+# process, but a multi-worker deployment would need a shared store instead.
+_live_lock = threading.Lock()
+_live_cond = threading.Condition(_live_lock)
+_live_state = {}  # username -> "live" | "offline"
+
+
+def _set_live_state(username, state):
+    with _live_cond:
+        if _live_state.get(username) != state:
+            _live_state[username] = state
+            _live_cond.notify_all()
+
+
+def _get_live_state(username):
+    with _live_lock:
+        return _live_state.get(username, "offline")
 
 
 def _validate_notify_url(url):
@@ -591,20 +615,50 @@ def check_stream(streamname):
     return jsonify({"known": exists})
 
 
+@app.route("/api/live/<streamname>/events")
+def live_events(streamname):
+    """Server-Sent Events stream of a user's live/offline state, fed by the
+    same OME opening/closing webhook events _set_live_state() records. Lets
+    player pages react the instant OME reports a stream start/stop instead of
+    polling or blindly retrying a dead connection on a timer."""
+    def gen():
+        last = _get_live_state(streamname)
+        yield f"event: state\ndata: {last}\n\n"
+        while True:
+            with _live_cond:
+                _live_cond.wait_for(
+                    lambda: _live_state.get(streamname, "offline") != last,
+                    timeout=25,
+                )
+                current = _live_state.get(streamname, "offline")
+            if current != last:
+                last = current
+                yield f"event: state\ndata: {last}\n\n"
+            else:
+                yield ": heartbeat\n\n"  # keep intermediary proxies from timing out the connection
+
+    return Response(
+        gen(),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
 
 @app.route("/live/<streamname>")
 def play_stream(streamname):
     db = get_db()
     with db:
         cur = db.cursor()
-        cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
+        cur.execute("SELECT stream_title, offline_image_url FROM users WHERE username=?", (streamname,))
         row = cur.fetchone()
         streamtitle = row["stream_title"] if row else None
+        offline_image_url = row["offline_image_url"] if row else None
 
         return render_template(
             "player.html",
             streamname=streamname,
             streamtitle=streamtitle,
+            offline_image_url=offline_image_url,
             OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
             OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
             OME_APP_NAME=OME_APP_NAME
@@ -621,7 +675,7 @@ def stream_page(username):
     db = get_db()
     cur = db.cursor()
     cur.execute(
-        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline "
+        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline, offline_image_url "
         "FROM users WHERE username=?",
         (username,),
     )
@@ -631,6 +685,7 @@ def stream_page(username):
     notify_builtin = bool(row["notify_builtin"]) if row else False
     notify_on_live = bool(row["notify_on_live"]) if row else True
     notify_on_offline = bool(row["notify_on_offline"]) if row else False
+    offline_image_url = row["offline_image_url"] if row else None
 
     return render_template(
         "stream.html",
@@ -643,6 +698,7 @@ def stream_page(username):
         notify_builtin=notify_builtin,
         notify_on_live=notify_on_live,
         notify_on_offline=notify_on_offline,
+        offline_image_url=offline_image_url,
         notify_error=None,
     )
 
@@ -658,6 +714,7 @@ def regen_key(username):
 @require_auth
 def save_settings(username):
     streamtitle = request.form.get("streamtitle")
+    offline_image_url = (request.form.get("offline_image_url") or "").strip()
     notify_url = (request.form.get("notify_url") or "").strip()
     notify_builtin = request.form.get("notify_builtin") == "on"
     notify_on_live = request.form.get("notify_on_live") == "on"
@@ -676,6 +733,7 @@ def save_settings(username):
             streamkey=streamkey,
             streamtitle=streamtitle,
             rtmp_urls=RTMP_URLS,
+            offline_image_url=offline_image_url,
             notify_url=notify_url,
             notify_builtin=notify_builtin,
             notify_on_live=notify_on_live,
@@ -686,9 +744,17 @@ def save_settings(username):
     db = get_db()
     with db:
         db.execute(
-            "UPDATE users SET stream_title=?, notify_url=?, notify_builtin=?, notify_on_live=?, notify_on_offline=? "
-            "WHERE username=?",
-            (streamtitle, notify_url or None, int(notify_builtin), int(notify_on_live), int(notify_on_offline), username),
+            "UPDATE users SET stream_title=?, offline_image_url=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
+            "notify_on_offline=? WHERE username=?",
+            (
+                streamtitle,
+                offline_image_url or None,
+                notify_url or None,
+                int(notify_builtin),
+                int(notify_on_live),
+                int(notify_on_offline),
+                username,
+            ),
         )
 
     return redirect(url_for("stream_page"))
@@ -838,6 +904,7 @@ def verify_webhook():
         username, correct_key = row
         if secrets.compare_digest(correct_key, key):
             _set_notify_state(userid, "live")
+            _set_live_state(username, "live")
             new_url = f"{RTMP_HOST}/{username}"
             return jsonify({
                 "allowed": True,
@@ -854,7 +921,14 @@ def verify_webhook():
         try:
             key_part = parsed_uri.path.strip('/').split('/')[-1]
             userid_str, _key = key_part.split("_", 1)
-            _set_notify_state(int(userid_str), "offline")
+            userid = int(userid_str)
+            _set_notify_state(userid, "offline")
+
+            db = get_db()
+            cur = db.execute("SELECT username FROM users WHERE userid=?", (userid,))
+            row = cur.fetchone()
+            if row:
+                _set_live_state(row["username"], "offline")
         except (ValueError, AttributeError, IndexError):
             pass
         return jsonify({}) # Flask prefers returning actual Response objects or dicts
