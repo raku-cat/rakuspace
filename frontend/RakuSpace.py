@@ -29,6 +29,10 @@ OME_PROVIDER_HOST = app.config['OME_PROVIDER_HOST']
 OME_PUBLISHER_HOST = app.config['OME_PUBLISHER_HOST']
 OME_PUBLISHER_PORT = app.config['OME_PUBLISHER_PORT']
 OME_APP_NAME = app.config['OME_APP_NAME']
+# Optional separate LL-HLS endpoint; falls back to the WebRTC publisher
+# host/port when unset (OME serves LL-HLS on the same TLS port by default).
+OME_LLHLS_HOST = app.config.get('OME_LLHLS_HOST') or OME_PUBLISHER_HOST
+OME_LLHLS_PORT = app.config.get('OME_LLHLS_PORT') or OME_PUBLISHER_PORT
 OME_RTMP_PROVIDER_PORT = app.config['OME_RTMP_PROVIDER_PORT']
 RTMP_HOST = f"rtmp://{OME_PROVIDER_HOST}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
 RTMP_ALT_HOSTS = app.config['RTMP_ALT_HOSTS']
@@ -574,13 +578,32 @@ threading.Thread(target=_notify_reconciler, daemon=True).start()
 
 
 # --- Routes ---
+def get_stream_title(streamname):
+    """Shared stream_title lookup used by both the OvenPlayer and /next player routes."""
+    db = get_db()
+    with db:
+        cur = db.cursor()
+        cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
+        row = cur.fetchone()
+        return row["stream_title"] if row else None
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", next_prefix="")
+
+@app.route("/next")
+@app.route("/next/")
+def index_next():
+    return render_template("index.html", next_prefix="/next")
 
 @app.route("/multistream")
 def multistream():
-    return render_template("multistream.html")
+    return render_template("multistream.html", next_prefix="")
+
+@app.route("/next/multistream")
+def multistream_next():
+    return render_template("multistream.html", next_prefix="/next")
 
 @app.route("/api/check/<streamname>")
 def check_stream(streamname):
@@ -594,21 +617,35 @@ def check_stream(streamname):
 
 @app.route("/live/<streamname>")
 def play_stream(streamname):
-    db = get_db()
-    with db:
-        cur = db.cursor()
-        cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
-        row = cur.fetchone()
-        streamtitle = row["stream_title"] if row else None
+    streamtitle = get_stream_title(streamname)
+    return render_template(
+        "player.html",
+        streamname=streamname,
+        streamtitle=streamtitle,
+        OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
+        OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
+        OME_APP_NAME=OME_APP_NAME
+    )
 
-        return render_template(
-            "player.html",
-            streamname=streamname,
-            streamtitle=streamtitle,
-            OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
-            OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
-            OME_APP_NAME=OME_APP_NAME
-        )
+
+@app.route("/next/live/<streamname>")
+def play_stream_next(streamname):
+    streamtitle = get_stream_title(streamname)
+    return render_template(
+        "player_next.html",
+        streamname=streamname,
+        streamtitle=streamtitle,
+        OME_LLHLS_HOST=OME_LLHLS_HOST,
+        OME_LLHLS_PORT=OME_LLHLS_PORT,
+        OME_APP_NAME=OME_APP_NAME
+    )
+
+
+@app.route("/next/<path:subpath>")
+def next_passthrough(subpath):
+    # Anything under /next/ that isn't explicitly overridden above (settings,
+    # notifications, etc.) resolves to the canonical, non-next page.
+    return redirect("/" + subpath)
 
 
 @app.route("/stream_info")

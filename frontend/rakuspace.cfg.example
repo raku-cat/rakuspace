@@ -11,6 +11,12 @@ OME_APP_NAME = 'app'
 # origin this will probbably be the same as your provider above.
 OME_PUBLISHER_HOST = 'localhost'
 OME_PUBLISHER_PORT = '3334'
+# Optional: LL-HLS endpoint for the experimental /next player, if it differs
+# from the WebRTC publisher above. Leave commented out to reuse
+# OME_PUBLISHER_HOST/OME_PUBLISHER_PORT (OME serves LL-HLS on the same TLS
+# port as WebRTC signaling by default).
+# OME_LLHLS_HOST = 'localhost'
+# OME_LLHLS_PORT = '3334'
 
 # Where flask will bind to using its built in debug server, only used
 # when running the debug server, gunicorn etc will not use this.

@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Watching {{ streamname }}</title>
+  <script src="{{ url_for('static', filename='hls/hls.min.js') }}"></script>
+  <style>
+    :root {
+      /* Catppuccin Macchiato */
+      --ctp-crust: #181926;
+      --ctp-mantle: #1e2030;
+      --ctp-base: #24273a;
+      --ctp-surface0: #363a4f;
+      --ctp-surface1: #494d64;
+      --ctp-surface2: #5b6078;
+      --ctp-overlay0: #6e738d;
+      --ctp-overlay1: #8087a2;
+      --ctp-subtext0: #a5adcb;
+      --ctp-subtext1: #b8c0e0;
+      --ctp-text: #cad3f5;
+      --ctp-pink: #f5bde6;
+      --ctp-red: #ed8796;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: sans-serif;
+    }
+
+    #stage {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      background: #000;
+    }
+
+    video {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      display: block;
+    }
+
+    #title-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 14px 18px;
+      color: var(--ctp-text);
+      background: linear-gradient(to bottom, rgba(24,25,38,0.85), transparent);
+      font-size: 1em;
+      font-weight: 600;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #stage:hover #title-overlay,
+    #stage.show-ui #title-overlay { opacity: 1; }
+
+    #offline {
+      position: absolute;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      color: var(--ctp-subtext1);
+      font-size: 1.4em;
+      background: var(--ctp-crust);
+      text-align: center;
+      padding: 0 16px;
+    }
+
+    #controls {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 14px;
+      background: linear-gradient(to top, rgba(24,25,38,0.9), transparent);
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    #stage:hover #controls,
+    #stage.show-ui #controls { opacity: 1; }
+
+    #controls button {
+      background: none;
+      border: none;
+      color: var(--ctp-text);
+      cursor: pointer;
+      font-size: 1.1em;
+      padding: 4px 8px;
+      border-radius: 4px;
+      line-height: 1;
+    }
+    #controls button:hover { color: var(--ctp-pink); background: var(--ctp-surface0); }
+
+    #volume {
+      width: 90px;
+      accent-color: var(--ctp-pink);
+    }
+
+    #controls .spacer { flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <video id="video" playsinline muted></video>
+    <div id="title-overlay">{{ streamtitle }}</div>
+    <div id="offline">{{ streamname }} is offline</div>
+
+    <div id="controls">
+      <button id="playBtn" title="Play/Pause">▶</button>
+      <button id="muteBtn" title="Mute/Unmute">🔇</button>
+      <input id="volume" type="range" min="0" max="1" step="0.05" value="1">
+      <div class="spacer"></div>
+      <button id="fullscreenBtn" title="Fullscreen">⛶</button>
+    </div>
+  </div>
+
+  <script>
+    const streamName = "{{ streamname }}";
+    const host = "{{ OME_LLHLS_HOST }}";
+    const port = "{{ OME_LLHLS_PORT }}";
+    const appName = "{{ OME_APP_NAME }}";
+
+    const streamUrl = `https://${host}:${port}/${appName}/${streamName}/llhls.m3u8`;
+
+    const video = document.getElementById("video");
+    const stage = document.getElementById("stage");
+    const offlineMsg = document.getElementById("offline");
+    const playBtn = document.getElementById("playBtn");
+    const muteBtn = document.getElementById("muteBtn");
+    const volume = document.getElementById("volume");
+    const fullscreenBtn = document.getElementById("fullscreenBtn");
+
+    let hls = null;
+    let retryTimer = null;
+
+    function setOffline() {
+      offlineMsg.style.display = "flex";
+      video.style.display = "none";
+      scheduleRetry();
+    }
+
+    function setOnline() {
+      offlineMsg.style.display = "none";
+      video.style.display = "block";
+    }
+
+    function scheduleRetry() {
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(loadStream, 5000);
+    }
+
+    function attemptAutoplay() {
+      video.play().catch(() => {
+        // Autoplay was blocked; fall back to muted autoplay.
+        video.muted = true;
+        muteBtn.textContent = "🔇";
+        video.play().catch(() => {});
+      });
+    }
+
+    function loadStream() {
+      clearTimeout(retryTimer);
+
+      if (video.canPlayType("application/vnd.apple.mpegurl")) {
+        // Safari: native HLS support, no hls.js needed.
+        video.src = streamUrl;
+        video.addEventListener("loadedmetadata", () => { setOnline(); attemptAutoplay(); }, { once: true });
+        video.addEventListener("error", setOffline, { once: true });
+        return;
+      }
+
+      if (!window.Hls || !Hls.isSupported()) {
+        setOffline();
+        return;
+      }
+
+      if (hls) {
+        hls.destroy();
+      }
+      hls = new Hls({ lowLatencyMode: true });
+      hls.loadSource(streamUrl);
+      hls.attachMedia(video);
+
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        setOnline();
+        attemptAutoplay();
+      });
+
+      hls.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          setOffline();
+        }
+      });
+    }
+
+    // --- Controls ---
+    function updatePlayBtn() {
+      playBtn.textContent = video.paused ? "▶" : "⏸";
+    }
+    function updateMuteBtn() {
+      muteBtn.textContent = video.muted || video.volume === 0 ? "🔇" : "🔊";
+    }
+
+    playBtn.addEventListener("click", () => {
+      if (video.paused) video.play(); else video.pause();
+    });
+    video.addEventListener("play", updatePlayBtn);
+    video.addEventListener("pause", updatePlayBtn);
+
+    muteBtn.addEventListener("click", () => {
+      video.muted = !video.muted;
+      if (!video.muted && video.volume === 0) video.volume = 1;
+      volume.value = video.muted ? 0 : video.volume;
+      updateMuteBtn();
+    });
+    volume.addEventListener("input", () => {
+      video.volume = volume.value;
+      video.muted = Number(volume.value) === 0;
+      updateMuteBtn();
+    });
+
+    fullscreenBtn.addEventListener("click", () => {
+      if (document.fullscreenElement) {
+        document.exitFullscreen();
+      } else {
+        stage.requestFullscreen().catch(() => {});
+      }
+    });
+
+    // Keep controls visible briefly on tap for touch devices.
+    stage.addEventListener("click", () => {
+      stage.classList.add("show-ui");
+      clearTimeout(stage._uiTimer);
+      stage._uiTimer = setTimeout(() => stage.classList.remove("show-ui"), 2500);
+    });
+
+    updatePlayBtn();
+    updateMuteBtn();
+    loadStream();
+  </script>
+</body>
+</html>

@@ -173,7 +173,7 @@
 
   <header>
     <div class="header-links">
-      <a class="multistream-link" href="/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
+      <a class="multistream-link" href="{{ next_prefix }}/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
       <a class="login-btn" href="/stream_info">Streamer Settings</a>
     </div>
   </header>
@@ -199,6 +199,7 @@
   </main>
 
   <script>
+    const LIVE_PREFIX = "{{ next_prefix }}";
     const input = document.getElementById("stream-input");
     const hint = document.getElementById("stream-hint");
     const recentDiv = document.getElementById("recent");
@@ -220,7 +221,7 @@
       if (list.length === 0) { recentDiv.style.display = "none"; return; }
       recentDiv.style.display = "";
       recentList.innerHTML = list.map(n =>
-        `<li><a href="/live/${encodeURIComponent(n)}">${n}</a></li>`
+        `<li><a href="${LIVE_PREFIX}/live/${encodeURIComponent(n)}">${n}</a></li>`
       ).join("");
     }
     renderRecent();
@@ -259,7 +260,7 @@
       const name = input.value.trim();
       if (name) {
         saveRecent(name);
-        window.location.href = "/live/" + encodeURIComponent(name);
+        window.location.href = LIVE_PREFIX + "/live/" + encodeURIComponent(name);
       }
     });
   </script>

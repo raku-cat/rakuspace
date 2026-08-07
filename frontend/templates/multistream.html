@@ -271,7 +271,7 @@
 <script>
 (function () {
   // The base URL used to build each stream's iframe src: LIVE_BASE + name.
-  const LIVE_BASE_URL = '/live/';
+  const LIVE_BASE_URL = '{{ next_prefix }}/live/';
 
   let nextId = 1;
   function makeLeaf(size) {
