@@ -207,32 +207,41 @@
       clearTimeout(localRetryTimer);
       offlineMsg.style.display = "none";
       document.getElementById('player').style.display = "block";
-      player.play();
     }
 
-
-    function checkAutoplay() {
-        if(player.getState() != "playing") {
-            //console.log("fooey")
-            const audio = new Audio();
-            audio.play().then(() => {
-                return;
-            }).catch(error => {
-                // Autoplay was prevented (e.g., by browser policy)
-                console.log("Autoplay prevented:", error.name);
-                player.setMute(true);
-                setOnline();
-            });
+    // Autoplay ladder: try playing with sound, and only fall back to muted
+    // playback if the browser actually rejects the unmuted attempt. OvenPlayer's
+    // own play()/getState() don't surface the underlying play() promise, so we
+    // go straight to the real <video>/<audio> element (player.getMediaElement())
+    // instead of probing autoplay policy with an unrelated decoy Audio() object,
+    // which was unreliable and left streams muted (or stuck as "offline") far
+    // more often than the browser's actual policy required.
+    function attemptPlayback() {
+      const media = player.getMediaElement();
+      if (!media) {
+        player.play();
+        return;
+      }
+      const attempt = media.play();
+      if (!attempt || typeof attempt.catch !== "function") return;
+      attempt.catch(() => {
+        // Unmuted autoplay was rejected -- browsers are far more permissive
+        // about muted autoplay, so retry once with sound off.
+        player.setMute(true);
+        const mutedAttempt = media.play();
+        if (mutedAttempt && typeof mutedAttempt.catch === "function") {
+          // Even muted autoplay was rejected -- stop trying and leave the
+          // player paused; the big-play-button lets the viewer start it.
+          mutedAttempt.catch(() => {});
         }
+      });
     }
 
     // Listen for events
     player.on("error", setOffline);
     player.on("ended", setOffline);
     player.on("stateChanged", (e) => {
-      //console.log("nani");
-      if(e.newstate === "playing") setOnline();
-      if(e.newstate === "loading") checkAutoplay();
+      if (e.newstate === "playing") setOnline();
     });
 
     // Retry logic -- only used for transient local errors while OME still
@@ -244,6 +253,7 @@
           type: "webrtc",
           file: `wss://${host}:${port}/${appName}/${streamName}`
         }]);
+        attemptPlayback();
       }, 3000);
     }
 
@@ -260,7 +270,7 @@
         type: "webrtc",
         file: `wss://${host}:${port}/${appName}/${streamName}`
       }]);
-      player.play();
+      attemptPlayback();
     });
 
     // Drive (re)connect attempts off OME's own publish start/stop events
@@ -277,7 +287,7 @@
           type: "webrtc",
           file: `wss://${host}:${port}/${appName}/${streamName}`
         }]);
-        player.play();
+        attemptPlayback();
       } else {
         setOffline();
       }
