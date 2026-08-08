@@ -209,6 +209,28 @@
       document.getElementById('player').style.display = "block";
     }
 
+    // Every player.load() spins up a brand-new native <video>/<audio> element
+    // (unmuted, full volume by default) but OvenPlayer never re-applies its
+    // own tracked mute state onto it -- so a mute forced by the autoplay
+    // fallback below stuck around in the UI (slider pinned to 0) even after a
+    // later reconnect played back unmuted at full volume. Track the viewer's
+    // own explicit choice separately from mute states we set ourselves, and
+    // re-apply *that* at the start of every load instead of leaving whatever
+    // the previous connection happened to end on.
+    let userMuted = false;
+    let settingMuteProgrammatically = false;
+    function setMuteProgrammatic(muted) {
+      settingMuteProgrammatically = true;
+      player.setMute(muted);
+      settingMuteProgrammatically = false;
+    }
+    player.on("mute", (e) => {
+      if (!settingMuteProgrammatically) {
+        // Came from the viewer clicking the player's own mute button/slider.
+        userMuted = e.mute;
+      }
+    });
+
     // Autoplay ladder: try playing with sound, and only fall back to muted
     // playback if the browser actually rejects the unmuted attempt. OvenPlayer's
     // own play()/getState() don't surface the underlying play() promise, so we
@@ -218,6 +240,7 @@
     // more often than the browser's actual policy required.
     function attemptPlayback() {
       const media = player.getMediaElement();
+      setMuteProgrammatic(userMuted);
       if (!media) {
         player.play();
         return;
@@ -226,8 +249,10 @@
       if (!attempt || typeof attempt.catch !== "function") return;
       attempt.catch(() => {
         // Unmuted autoplay was rejected -- browsers are far more permissive
-        // about muted autoplay, so retry once with sound off.
-        player.setMute(true);
+        // about muted autoplay, so retry once with sound off. This doesn't
+        // touch userMuted -- it's a fallback we imposed, not the viewer's own
+        // choice, so the next reconnect should still try unmuted first.
+        if (!userMuted) setMuteProgrammatic(true);
         const mutedAttempt = media.play();
         if (mutedAttempt && typeof mutedAttempt.catch === "function") {
           // Even muted autoplay was rejected -- stop trying and leave the
