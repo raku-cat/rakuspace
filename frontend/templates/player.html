@@ -168,14 +168,19 @@
     const offlineImageUrl = {{ (offline_image_url or "") | tojson }};
     const chatUrl = {{ (chat_url or "") | tojson }};
 
-    // No initial `sources` -- creating the player with a source and
-    // autoStart would fire a connection attempt to OME immediately on page
-    // load, before we've heard from the SSE live-state feed below. The
-    // first (and every subsequent) load is instead driven off that feed;
-    // autoStart is kept so each load() still attempts to play automatically
-    // when the browser allows it.
+    // Connect immediately on page load -- like the original player, before
+    // the SSE live-state feed existed. Waiting for that feed before ever
+    // loading a source (and treating its "offline" push as authoritative for
+    // showing the overlay) meant a delayed, missed, or spurious webhook
+    // signal left a genuinely-live stream stuck showing offline. The feed is
+    // still used below, but only as an accelerant to reconnect sooner --
+    // never as the thing that decides whether we're online or offline. That
+    // decision is left to the player's own real connection events instead.
     const player = OvenPlayer.create("player", {
-      sources: [],
+      sources: [{
+        type: "webrtc",
+        file: `wss://${host}:${port}/${appName}/${streamName}`,
+      }],
       autoStart: true,
       playbackRates: [1],
       disableSeekUI: true,
@@ -191,17 +196,11 @@
       offlineMsg.classList.add("has-image");
     }
 
-    let liveState = null; // "live" | "offline", set by the /api/live SSE push below
     let localRetryTimer = null;
 
     function setOffline() {
       offlineMsg.style.display = "flex";
-      // Only worth retrying on our own if OME still thinks the stream is up
-      // (a transient viewer-side glitch); if OME says offline, there's
-      // nothing to reconnect to until the push below says otherwise.
-      if (liveState === "live") {
-        retryStream();
-      }
+      retryStream();
     }
     function setOnline() {
       clearTimeout(localRetryTimer);
@@ -211,23 +210,36 @@
 
     // Every player.load() spins up a brand-new native <video>/<audio> element
     // (unmuted, full volume by default) but OvenPlayer never re-applies its
-    // own tracked mute state onto it -- so a mute forced by the autoplay
-    // fallback below stuck around in the UI (slider pinned to 0) even after a
-    // later reconnect played back unmuted at full volume. Track the viewer's
-    // own explicit choice separately from mute states we set ourselves, and
-    // re-apply *that* at the start of every load instead of leaving whatever
-    // the previous connection happened to end on.
+    // own tracked mute/volume state onto it -- so a mute forced by the
+    // autoplay fallback below, or a volume level the viewer dragged the
+    // slider to, was silently dropped on the next reconnect: audio would
+    // come back at full native volume while the slider kept showing whatever
+    // it last displayed. Track the viewer's own explicit choices separately
+    // from adjustments we make ourselves, and re-apply *those* at the start
+    // of every load instead of leaving whatever a fresh element defaults to.
     let userMuted = false;
-    let settingMuteProgrammatically = false;
+    let userVolume = null; // null until the viewer (or OvenPlayer's default) reports one
+    let settingProgrammatically = false;
     function setMuteProgrammatic(muted) {
-      settingMuteProgrammatically = true;
+      settingProgrammatically = true;
       player.setMute(muted);
-      settingMuteProgrammatically = false;
+      settingProgrammatically = false;
+    }
+    function setVolumeProgrammatic(volume) {
+      settingProgrammatically = true;
+      player.setVolume(volume);
+      settingProgrammatically = false;
     }
     player.on("mute", (e) => {
-      if (!settingMuteProgrammatically) {
-        // Came from the viewer clicking the player's own mute button/slider.
+      if (!settingProgrammatically) {
+        // Came from the viewer clicking the player's own mute button.
         userMuted = e.mute;
+      }
+    });
+    player.on("volumeChanged", (e) => {
+      if (!settingProgrammatically) {
+        // Came from the viewer dragging the player's own volume slider.
+        userVolume = e.volume;
       }
     });
 
@@ -241,6 +253,7 @@
     function attemptPlayback() {
       const media = player.getMediaElement();
       setMuteProgrammatic(userMuted);
+      if (userVolume !== null) setVolumeProgrammatic(userVolume);
       if (!media) {
         player.play();
         return;
@@ -267,10 +280,12 @@
     player.on("ended", setOffline);
     player.on("stateChanged", (e) => {
       if (e.newstate === "playing") setOnline();
+      if (e.newstate === "loading") attemptPlayback();
     });
 
-    // Retry logic -- only used for transient local errors while OME still
-    // reports the stream as live; see setOffline() above.
+    // Retry logic -- our own self-healing loop, independent of the SSE feed
+    // below, so a stream that's actually still up always eventually recovers
+    // even if a webhook signal never arrives or arrives wrong.
     function retryStream() {
       clearTimeout(localRetryTimer);
       localRetryTimer = setTimeout(() => {
@@ -278,43 +293,35 @@
           type: "webrtc",
           file: `wss://${host}:${port}/${appName}/${streamName}`
         }]);
-        attemptPlayback();
-      }, 3000);
+      }, 5000);
     }
 
-    // Manual escape hatch on the offline overlay itself: the overlay sits on
-    // top of the player and blocks its big-play-button, and before the first
-    // SSE "live" event ever arrives (e.g. right after a server restart, with
-    // a streamer already live) there's no source loaded at all -- nothing
-    // under the overlay to click. This always attempts a connection directly
-    // against OME, independent of our tracked liveState, so the viewer can
-    // recover even if that state is stale or wrong.
+    // Manual escape hatch on the offline overlay: always attempts a
+    // connection directly against OME.
     document.getElementById("offline-retry").addEventListener("click", () => {
       clearTimeout(localRetryTimer);
       player.load([{
         type: "webrtc",
         file: `wss://${host}:${port}/${appName}/${streamName}`
       }]);
-      attemptPlayback();
     });
 
-    // Drive (re)connect attempts off OME's own publish start/stop events
-    // (relayed via /auth/ome into this SSE feed) instead of blindly retrying
-    // a dead connection: only load a fresh source when actually told the
-    // stream is live, and stop the instant we're told it isn't.
+    // OME's publish start/stop events (relayed via /auth/ome) as an
+    // accelerant: when told the stream just went live and we're not
+    // currently playing, jump the self-healing retry queue and reconnect
+    // right away instead of waiting out the rest of the 5s timer. Never used
+    // to force the offline overlay -- an "offline" push (which can arrive
+    // spuriously, e.g. off an unrelated viewer connection closing) is
+    // ignored; only the player's own real connection events (above) decide
+    // that.
     const liveEvents = new EventSource(`/api/live/${streamName}/events`);
     liveEvents.addEventListener("state", (e) => {
-      const state = e.data;
-      if (state === liveState) return;
-      liveState = state;
-      if (state === "live") {
+      if (e.data === "live" && player.getState() !== "playing") {
+        clearTimeout(localRetryTimer);
         player.load([{
           type: "webrtc",
           file: `wss://${host}:${port}/${appName}/${streamName}`
         }]);
-        attemptPlayback();
-      } else {
-        setOffline();
       }
     });
 
