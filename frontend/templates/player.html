@@ -105,6 +105,19 @@
       background-position: center;
       text-align: center;
       padding: 0 16px;
+      /* This backdrop sits outside OvenPlayer's own wrapper element, so it
+         being on top (needed for the z-index fix above) also swallowed the
+         mouseenter/mousemove events OvenPlayer's own hover-to-show-controls
+         logic needs -- and since that only ever arms on a genuine boundary
+         crossing, not on a DOM/visibility change, controls stayed stuck
+         hidden even after this overlay was hidden again. Letting pointer
+         events pass through the empty backdrop (while keeping the message
+         and retry button clickable via pointer-events: auto below) fixes
+         that without giving up the visual coverage. */
+      pointer-events: none;
+    }
+    #offline > div {
+      pointer-events: auto;
     }
     #offline.has-image::before {
       content: "";
