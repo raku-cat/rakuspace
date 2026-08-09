@@ -217,8 +217,31 @@
     // it last displayed. Track the viewer's own explicit choices separately
     // from adjustments we make ourselves, and re-apply *those* at the start
     // of every load instead of leaving whatever a fresh element defaults to.
+    //
+    // Also persisted to localStorage keyed by stream name, so a volume set
+    // while watching a stream directly on /live/<name> carries over when
+    // that same stream shows up as a tile inside /multistream (a same-origin
+    // iframe embed of this same page), and vice versa -- both are just
+    // separate loads of this page for the same streamName.
+    const volumeStorageKey = `rakuspace-volume-${streamName}`;
     let userMuted = false;
     let userVolume = null; // null until the viewer (or OvenPlayer's default) reports one
+    try {
+      const saved = JSON.parse(localStorage.getItem(volumeStorageKey));
+      if (saved && typeof saved === "object") {
+        if (typeof saved.muted === "boolean") userMuted = saved.muted;
+        if (typeof saved.volume === "number") userVolume = saved.volume;
+      }
+    } catch (err) {
+      // localStorage unavailable or bad data -- fall back to defaults.
+    }
+    function saveVolumePrefs() {
+      try {
+        localStorage.setItem(volumeStorageKey, JSON.stringify({ muted: userMuted, volume: userVolume }));
+      } catch (err) {
+        // ignore -- just won't persist across reloads/views
+      }
+    }
     let settingProgrammatically = false;
     function setMuteProgrammatic(muted) {
       settingProgrammatically = true;
@@ -234,12 +257,14 @@
       if (!settingProgrammatically) {
         // Came from the viewer clicking the player's own mute button.
         userMuted = e.mute;
+        saveVolumePrefs();
       }
     });
     player.on("volumeChanged", (e) => {
       if (!settingProgrammatically) {
         // Came from the viewer dragging the player's own volume slider.
         userVolume = e.volume;
+        saveVolumePrefs();
       }
     });
 
