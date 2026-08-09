@@ -662,7 +662,14 @@ def multistream():
 @require_auth
 def go_live(username):
     userid, streamkey, _ = get_or_create_userkey(username)
-    whip_url = f"{OME_WHIP_URL.rstrip('/')}/{userid}_{streamkey}" if OME_WHIP_URL else None
+    # OME only recognizes a publish URL as WHIP ingest (as opposed to its
+    # self-defined WebRTC signalling protocol) when ?direction=whip is
+    # present -- see https://docs.ovenmediaengine.com/live-source/webrtc.
+    # Without it OME 404s the request entirely (never reaching the
+    # AdmissionWebhook), which also means it never sets CORS headers on the
+    # response (a known OME limitation), so the browser reports it as a
+    # blocked CORS request rather than a 404.
+    whip_url = f"{OME_WHIP_URL.rstrip('/')}/{userid}_{streamkey}?direction=whip" if OME_WHIP_URL else None
     return render_template(
         "golive.html",
         username=username,
