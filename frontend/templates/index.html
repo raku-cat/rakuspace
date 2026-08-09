@@ -2,10 +2,10 @@
 <html>
 <head>
   <title>RakuSpace</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
     body { display: flex; flex-direction: column; }
-    header { justify-content: flex-end; }
 
     main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
 
@@ -44,16 +44,22 @@
       list-style: disc;
     }
     #recent-list li { margin: 3px 0; font-size: 0.9em; }
-    #recent-list a { color: var(--ctp-blue); text-decoration: none; }
+    #recent-list a { color: var(--ctp-pink); text-decoration: none; }
     #recent-list a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
 
   <header>
+    <div class="header-left">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+        <span class="brand-name">RakuSpace</span>
+      </a>
+    </div>
     <div class="header-links">
       <a class="golive-link" href="/go_live">Go Live!<span class="new-badge">New!</span></a>
-      <a class="multistream-link" href="/multistream">Multi-stream viewer</a>
+      <a class="multistream-link" href="/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
       <a class="login-btn" href="/stream_info">Streamer Settings</a>
     </div>
   </header>

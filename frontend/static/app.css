@@ -41,7 +41,27 @@ header {
   background: var(--ctp-crust);
   border-bottom: 1px solid var(--ctp-surface0);
 }
+header .header-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+
+header .brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+header .brand img { display: block; height: 22px; width: 22px; border-radius: 5px; }
+header .brand-name { font-size: 0.95em; font-weight: 700; color: var(--ctp-pink); letter-spacing: 0.01em; }
+header .brand:hover .brand-name { color: var(--ctp-text); }
+
 header .page-title { font-size: 0.95em; font-weight: 600; color: var(--ctp-subtext1); }
+header .header-left .page-title {
+  padding-left: 12px;
+  border-left: 1px solid var(--ctp-surface1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 header .header-links {
   display: flex;

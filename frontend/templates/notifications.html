@@ -3,14 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <title>Notification Settings</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
-  <style>
-    header { justify-content: flex-end; }
-  </style>
 </head>
 <body>
 
   <header>
+    <div class="header-left">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+        <span class="brand-name">RakuSpace</span>
+      </a>
+      <span class="page-title">Notification Settings</span>
+    </div>
     <a class="login-btn" href="{{ url_for('stream_page') }}">&larr; Back to Streamer Settings</a>
   </header>
 

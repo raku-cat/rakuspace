@@ -4,6 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <title>Streaming Info</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
     .card { margin-bottom: 24px; }
@@ -14,7 +15,13 @@
 <body>
 
   <header>
-    <span class="page-title">Streaming Info for {{ username }}</span>
+    <div class="header-left">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+        <span class="brand-name">RakuSpace</span>
+      </a>
+      <span class="page-title">Streaming Info for {{ username }}</span>
+    </div>
     <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
   </header>
 
