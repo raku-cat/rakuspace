@@ -169,14 +169,14 @@
     const offlineImageUrl = {{ (offline_image_url or "") | tojson }};
     const chatUrl = {{ (chat_url or "") | tojson }};
 
-    // Connect immediately on page load -- like the original player, before
-    // the SSE live-state feed existed. Waiting for that feed before ever
-    // loading a source (and treating its "offline" push as authoritative for
-    // showing the overlay) meant a delayed, missed, or spurious webhook
-    // signal left a genuinely-live stream stuck showing offline. The feed is
-    // still used below, but only as an accelerant to reconnect sooner --
-    // never as the thing that decides whether we're online or offline. That
-    // decision is left to the player's own real connection events instead.
+    // Always attempt a connection immediately on page load, regardless of
+    // what the SSE live-state feed below ends up saying -- this is what
+    // gets the player initialized at all, and covers the case where a
+    // streamer is already live before this page's SSE connection delivers
+    // its first state. Beyond this first attempt, reconnects are driven by
+    // that feed (see the "live" listener below) plus a slow backoff loop as
+    // a fallback; the offline overlay itself is decided purely by the
+    // player's own real connection events, never by the feed.
     const player = OvenPlayer.create("player", {
       sources: [{
         type: "webrtc",
@@ -199,12 +199,26 @@
 
     let localRetryTimer = null;
 
+    // Local reconnect loop is only a fallback for a missed/stale live signal
+    // (e.g. a server restart resets the in-memory live state to "offline"
+    // for a streamer who's actually still publishing, and no fresh webhook
+    // event will arrive until they reconnect) -- normally the SSE "live"
+    // push below does the reconnecting instantly. Since that fallback case
+    // is rare, back off each failed attempt instead of hammering OME every
+    // few seconds forever; reset to the base delay the moment we're told
+    // the stream is live or actually see it play.
+    const RECONNECT_BASE_MS = 5000;
+    const RECONNECT_MAX_MS = 20 * 60 * 1000; // cap at 20 minutes between attempts
+    const RECONNECT_MULTIPLIER = 1.6;
+    let retryDelay = RECONNECT_BASE_MS;
+
     function setOffline() {
       offlineMsg.style.display = "flex";
-      retryStream();
+      scheduleRetry();
     }
     function setOnline() {
       clearTimeout(localRetryTimer);
+      retryDelay = RECONNECT_BASE_MS;
       offlineMsg.style.display = "none";
       document.getElementById('player').style.display = "block";
     }
@@ -309,45 +323,46 @@
       if (e.newstate === "loading") attemptPlayback();
     });
 
-    // Retry logic -- our own self-healing loop, independent of the SSE feed
-    // below, so a stream that's actually still up always eventually recovers
-    // even if a webhook signal never arrives or arrives wrong.
-    function retryStream() {
-      clearTimeout(localRetryTimer);
-      localRetryTimer = setTimeout(() => {
-        player.load([{
-          type: "webrtc",
-          file: `wss://${host}:${port}/${appName}/${streamName}`
-        }]);
-      }, 5000);
-    }
-
-    // Manual escape hatch on the offline overlay: always attempts a
-    // connection directly against OME.
-    document.getElementById("offline-retry").addEventListener("click", () => {
-      clearTimeout(localRetryTimer);
+    function connectSource() {
       player.load([{
         type: "webrtc",
         file: `wss://${host}:${port}/${appName}/${streamName}`
       }]);
+    }
+
+    // Fallback retry loop -- see the comment above retryDelay. Each failed
+    // attempt waits longer than the last, up to RECONNECT_MAX_MS, instead of
+    // polling OME on a fixed short interval indefinitely.
+    function scheduleRetry() {
+      clearTimeout(localRetryTimer);
+      localRetryTimer = setTimeout(connectSource, retryDelay);
+      retryDelay = Math.min(retryDelay * RECONNECT_MULTIPLIER, RECONNECT_MAX_MS);
+    }
+
+    // Manual escape hatch on the offline overlay: always attempts a
+    // connection directly against OME, and resets the backoff since this is
+    // effectively a fresh signal from the viewer that it's worth trying.
+    document.getElementById("offline-retry").addEventListener("click", () => {
+      clearTimeout(localRetryTimer);
+      retryDelay = RECONNECT_BASE_MS;
+      connectSource();
     });
 
-    // OME's publish start/stop events (relayed via /auth/ome) as an
-    // accelerant: when told the stream just went live and we're not
-    // currently playing, jump the self-healing retry queue and reconnect
-    // right away instead of waiting out the rest of the 5s timer. Never used
-    // to force the offline overlay -- an "offline" push (which can arrive
-    // spuriously, e.g. off an unrelated viewer connection closing) is
-    // ignored; only the player's own real connection events (above) decide
-    // that.
+    // OME's publish start/stop events (relayed via /auth/ome) drive
+    // reconnects for the common case: when told the stream just went live
+    // and we're not currently playing, jump the fallback retry queue and
+    // reconnect right away, resetting the backoff since we now have a real
+    // signal instead of a guess. An "offline" push is ignored -- it can
+    // arrive spuriously (e.g. off an unrelated viewer connection closing)
+    // and isn't needed anyway, since the fallback loop above already covers
+    // "stop trying so aggressively once we're offline"; only the player's
+    // own real connection events decide when to show the offline overlay.
     const liveEvents = new EventSource(`/api/live/${streamName}/events`);
     liveEvents.addEventListener("state", (e) => {
       if (e.data === "live" && player.getState() !== "playing") {
         clearTimeout(localRetryTimer);
-        player.load([{
-          type: "webrtc",
-          file: `wss://${host}:${port}/${appName}/${streamName}`
-        }]);
+        retryDelay = RECONNECT_BASE_MS;
+        connectSource();
       }
     });
 
