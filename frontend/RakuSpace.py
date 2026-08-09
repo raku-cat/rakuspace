@@ -933,6 +933,17 @@ def verify_webhook():
     direction = req.get("direction")
     status = req.get("status")
 
+    # Enabling the webrtc provider in AdmissionWebhooks (needed to authorize
+    # WHIP publishes) also routes WebRTC *playback* connections through this
+    # same webhook, arriving as direction=="outgoing" against the publisher
+    # host rather than the provider host. This webhook only exists to gate
+    # who's allowed to publish, not who's allowed to watch, so allow any
+    # non-publish (outgoing/playback) admission request unconditionally
+    # before the provider-host allowlist below, which only makes sense for
+    # incoming publish attempts.
+    if direction != "incoming":
+        return jsonify({"allowed": True})
+
     parsed_uri = urlparse(url)
     #print(f"DEBUG Parsed URI: {parsed_uri}")
 
