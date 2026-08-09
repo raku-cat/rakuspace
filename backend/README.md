@@ -26,7 +26,24 @@ WHIP; OME just needs the `webrtc` provider enabled here and a `<WebRTC>` block u
 The WHIP ingest and the WebRTC playback publisher share the same signalling `TLSPort` (3334)
 and ICE candidate/TCP relay config -- no separate port is needed. RakuSpace's `OME_WHIP_URL`
 config value (see `rakuspace.cfg.example`) should point at `https://<host>:<TLSPort>/<app-name>`
-for whichever host has the `webrtc` provider enabled.
+for whichever host has the `webrtc` provider enabled. The app appends
+`/<userid>_<streamkey>?direction=whip` itself -- the `?direction=whip` query string is
+mandatory, it's what tells OME to treat the connection as WHIP ingest rather than its own
+self-defined WebRTC signalling protocol (see
+[OME's WHIP docs](https://docs.ovenmediaengine.com/live-source/webrtc)).
+
+### CORS and the `<Defaults><CrossDomains>` gotcha
+A browser publishing over WHIP sends a CORS preflight, and OME had a long-standing bug
+([#1593](https://github.com/AirenSoft/OvenMediaEngine/issues/1593)) where it never attached
+`Access-Control-Allow-Origin` to certain responses -- notably WHIP's own `201 Created` on a
+successful publish, and any `404`. That's fixed as of **OME 0.19.1**, but the fix also *moved*
+where the default CORS policy is configured: `<VirtualHost><CrossDomains>` (still present in
+these sample files, and all that pre-0.19.1 OME understands) is deprecated and silently
+ignored on 0.19.1+. The new location is `<Server><Defaults><CrossDomains>`, directly under
+`<Server>` and before `<VirtualHosts>` -- see `Server.xml`/`Server.xml_Origin`, which set it in
+both places for compatibility across versions. If you're on OME 0.19.1+ and still see missing
+CORS headers, check that `<Defaults><CrossDomains>` is actually present; if you're older than
+0.19.1, no config fixes this and an OME upgrade is the only way around the bug.
 
 
 ## Origin/Edge configuration

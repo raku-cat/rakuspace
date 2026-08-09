@@ -14,8 +14,20 @@
 			<Enable>false</Enable>
 		</LLHLS>
 	</Modules>
-    
-    
+
+	<!-- OME >= 0.19.1: global CORS default, required for CORS headers to be
+	     set on responses the deprecated per-VirtualHost CrossDomains block
+	     below no longer covers, notably WHIP's own 201 Created response.
+	     See https://github.com/AirenSoft/OvenMediaEngine/issues/1593. On
+	     older OME this block is simply unused; keep the VirtualHost one
+	     too for that case. -->
+	<Defaults>
+		<CrossDomains>
+			<Url>*</Url>
+		</CrossDomains>
+	</Defaults>
+
+
 	<Bind>
 		<Providers>
 			<RTMP>
