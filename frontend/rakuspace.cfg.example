@@ -49,6 +49,10 @@ NOTIFY_URL_WHITELIST_ENABLED = 'False'
 NOTIFY_URL_WHITELIST = []            # list of allowed hostnames, e.g. ['discord.com']
 # Debounce: how long a stream state must be stable before we notify, and how often we scan.
 NOTIFY_SETTLE_SECONDS = 15
+# Longer debounce specifically for going offline, so a brief drop (OME restart, network
+# blip) that reconnects within this window is treated as a continuation of the same
+# stream, not a new offline+live notification pair.
+NOTIFY_OFFLINE_GRACE_SECONDS = 120
 NOTIFY_TICK_SECONDS = 5
 # HTTP timeout for the outbound notification POST.
 NOTIFY_TIMEOUT_SECONDS = 3

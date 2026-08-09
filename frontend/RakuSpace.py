@@ -53,6 +53,7 @@ NOTIFY_VALIDATE_URLS = str(app.config.get('NOTIFY_VALIDATE_URLS', 'True')).lower
 NOTIFY_URL_WHITELIST_ENABLED = str(app.config.get('NOTIFY_URL_WHITELIST_ENABLED', 'False')).lower() == 'true'
 NOTIFY_URL_WHITELIST = app.config.get('NOTIFY_URL_WHITELIST', [])
 NOTIFY_SETTLE_SECONDS = int(app.config.get('NOTIFY_SETTLE_SECONDS', 15))
+NOTIFY_OFFLINE_GRACE_SECONDS = int(app.config.get('NOTIFY_OFFLINE_GRACE_SECONDS', 120))
 NOTIFY_TICK_SECONDS = int(app.config.get('NOTIFY_TICK_SECONDS', 5))
 NOTIFY_TIMEOUT_SECONDS = int(app.config.get('NOTIFY_TIMEOUT_SECONDS', 3))
 SITE_PUBLIC_URL = app.config.get('SITE_PUBLIC_URL', '')
@@ -197,9 +198,15 @@ def require_auth(f):
 # --- Go-live notifications ---
 # OME's open/close events only update in-memory state here; a background
 # reconciler thread is the only thing that actually sends notifications, once
-# a user's state has been stable for NOTIFY_SETTLE_SECONDS. This debounces
-# flapping connections (rapid reconnect/restart) into a single notification
-# instead of spamming the target URL on every OME event.
+# a user's state has been stable long enough: NOTIFY_SETTLE_SECONDS for going
+# live, or the longer NOTIFY_OFFLINE_GRACE_SECONDS for going offline. The
+# offline side gets the longer grace period so a brief drop (OME restart,
+# a network blip) that recovers within that window never counts as a real
+# offline -- the entry flips back to "live" before it's ever notified, so no
+# offline notification fires and the reconnect isn't treated as a fresh
+# stream start either. This debounces flapping connections (rapid
+# reconnect/restart) into a single notification instead of spamming the
+# target URL on every OME event.
 _notify_lock = threading.Lock()
 _notify_state = {}  # userid -> {"state": "live"|"offline", "changed_at": ts, "notified_state": ...}
 
@@ -613,7 +620,8 @@ def _notify_reconciler():
             for userid, entry in _notify_state.items():
                 if entry["state"] == entry["notified_state"]:
                     continue
-                if now - entry["changed_at"] < NOTIFY_SETTLE_SECONDS:
+                settle = NOTIFY_OFFLINE_GRACE_SECONDS if entry["state"] == "offline" else NOTIFY_SETTLE_SECONDS
+                if now - entry["changed_at"] < settle:
                     continue
                 due.append((userid, entry["state"]))
                 entry["notified_state"] = entry["state"]
