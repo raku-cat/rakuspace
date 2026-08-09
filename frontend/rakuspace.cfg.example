@@ -16,6 +16,15 @@ OME_APP_NAME = 'app'
 OME_PUBLISHER_HOST = 'localhost'
 OME_PUBLISHER_PORT = '3334'
 
+# Base WHIP (WebRTC-HTTP Ingestion Protocol) ingest URL, used by the
+# in-browser "Go Live!" screenshare page (/go_live) to publish directly from
+# the browser instead of an external RTMP client. Must be https:// and its
+# host must be OME_PROVIDER_HOST (or one of RTMP_ALT_HOSTS), since it's
+# authorized through the same AdmissionWebhook as RTMP. The app appends
+# '/<userid>_<streamkey>' itself. Leave blank to hide the Go Live page's
+# publish controls (e.g. 'https://park.raku.party:3334/rakuspace').
+OME_WHIP_URL = ''
+
 # Where flask will bind to using its built in debug server, only used
 # when running the debug server, gunicorn etc will not use this.
 SITE_HOST='localhost'

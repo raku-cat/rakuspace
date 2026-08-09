@@ -22,6 +22,22 @@
 				<Port>${env:OME_RTMP_PROV_PORT:1935}</Port>
 				<WorkerCount>1</WorkerCount>
 			</RTMP>
+			<!-- WHIP (WebRTC-HTTP Ingestion Protocol) ingest, used by RakuSpace's
+			     in-browser "Go Live!" screenshare page. In a split origin/edge
+			     setup this belongs on the origin, alongside the RTMP provider,
+			     not on the edge (Server.xml_Edge is playback-only). -->
+			<WebRTC>
+				<Signalling>
+					<TLSPort>${env:OME_WEBRTC_SIGNALLING_TLS_PORT:3334}</TLSPort>
+					<WorkerCount>1</WorkerCount>
+				</Signalling>
+				<IceCandidates>
+					<IceCandidate>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_CANDIDATE_PORT:10000-10004/udp}</IceCandidate>
+					<TcpRelay>${env:OME_HOST_IP:*}:${env:OME_WEBRTC_TCP_RELAY_PORT:3478}</TcpRelay>
+					<TcpForce>false</TcpForce>
+					<TcpRelayWorkerCount>1</TcpRelayWorkerCount>
+				</IceCandidates>
+			</WebRTC>
 		</Providers>
 
 		<Publishers>
@@ -55,7 +71,7 @@
 				<ControlServerUrl>http://0.0.0.0:6868/auth/ome</ControlServerUrl>
 				<Timeout>3000</Timeout>
 				<Enables>
-					<Providers>rtmp</Providers>
+					<Providers>rtmp webrtc</Providers>
 				</Enables>
 			</AdmissionWebhooks>
 			<Applications>
@@ -98,6 +114,7 @@
 					</OutputProfiles>
 					<Providers>
 						<RTMP />
+						<WebRTC />
 					</Providers>
 					<Publishers>
 						<AppWorkerCount>1</AppWorkerCount>

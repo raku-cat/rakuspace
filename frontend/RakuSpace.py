@@ -33,6 +33,12 @@ OME_PROVIDER_HOST = app.config['OME_PROVIDER_HOST']
 OME_PUBLISHER_HOST = app.config['OME_PUBLISHER_HOST']
 OME_PUBLISHER_PORT = app.config['OME_PUBLISHER_PORT']
 OME_APP_NAME = app.config['OME_APP_NAME']
+# Base WHIP (WebRTC-HTTP Ingestion Protocol) URL for browser-based publishing
+# via /go_live, e.g. 'https://park.raku.party:3334/rakuspace'. The route
+# appends '/<userid>_<streamkey>'. Must resolve to a host OME_PROVIDER_HOST/
+# RTMP_ALT_HOSTS accepts, since it's authorized through the same /auth/ome
+# webhook as RTMP. Leave blank to hide the Go Live page's publish controls.
+OME_WHIP_URL = app.config.get('OME_WHIP_URL', '')
 OME_RTMP_PROVIDER_PORT = app.config['OME_RTMP_PROVIDER_PORT']
 RTMP_HOST = f"rtmp://{OME_PROVIDER_HOST}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
 RTMP_ALT_HOSTS = app.config['RTMP_ALT_HOSTS']
@@ -651,6 +657,17 @@ def index():
 @app.route("/multistream")
 def multistream():
     return render_template("multistream.html", chat_url=irc_embed_url(IRC_EMBED_MULTISTREAM_CHANNEL))
+
+@app.route("/go_live")
+@require_auth
+def go_live(username):
+    userid, streamkey, _ = get_or_create_userkey(username)
+    whip_url = f"{OME_WHIP_URL.rstrip('/')}/{userid}_{streamkey}" if OME_WHIP_URL else None
+    return render_template(
+        "golive.html",
+        username=username,
+        whip_url=whip_url,
+    )
 
 @app.route("/api/check/<streamname>")
 def check_stream(streamname):

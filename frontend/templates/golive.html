@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Go Live - RakuSpace</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <style>
+    body { display: flex; flex-direction: column; }
+    header { justify-content: space-between; }
+
+    main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+
+    .card { width: 480px; margin-bottom: 0; text-align: center; }
+    .card h1 { font-size: 1.1em; margin: 0 0 18px 0; }
+
+    #preview-wrap {
+      display: none;
+      margin-bottom: 18px;
+      background: #000;
+      border: 1px solid var(--ctp-surface1);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    #preview {
+      display: block;
+      width: 100%;
+      max-height: 320px;
+      background: #000;
+    }
+
+    #cast-btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 1em;
+    }
+
+    #status { font-size: 0.85em; height: 1.2em; margin-top: 10px; color: var(--ctp-subtext0); }
+    #status.error { color: var(--ctp-red); }
+    #status.live { color: var(--ctp-green); }
+
+    #unconfigured-note {
+      display: none;
+      font-size: 0.85em;
+      color: var(--ctp-overlay1);
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <span class="page-title">Go Live!</span>
+    <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
+  </header>
+
+  <main>
+    <div class="card">
+      <h1>Screenshare control</h1>
+
+      <div id="preview-wrap">
+        <video id="preview" autoplay muted playsinline></video>
+      </div>
+
+      <button id="cast-btn" class="btn-primary" type="button">Start casting</button>
+      <div id="status"></div>
+      <div id="unconfigured-note">
+        Screenshare publishing isn't configured on this server yet.
+      </div>
+    </div>
+  </main>
+
+  <script>
+    const whipUrl = {{ whip_url | tojson }};
+    const STUN_SERVER = "stun:stun.ovenmediaengine.com:13478";
+
+    const castBtn = document.getElementById("cast-btn");
+    const status = document.getElementById("status");
+    const previewWrap = document.getElementById("preview-wrap");
+    const preview = document.getElementById("preview");
+    const unconfiguredNote = document.getElementById("unconfigured-note");
+
+    let mediaStream = null;
+    let pc = null;
+    let whipResourceUrl = null;
+    let live = false;
+
+    function setStatus(text, cls) {
+      status.textContent = text || "";
+      status.className = cls || "";
+    }
+
+    if (!whipUrl) {
+      castBtn.disabled = true;
+      unconfiguredNote.style.display = "";
+    }
+
+    async function startCasting() {
+      castBtn.disabled = true;
+      setStatus("Requesting screen…");
+      try {
+        mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+      } catch (err) {
+        setStatus("Screen share cancelled or denied.", "error");
+        castBtn.disabled = false;
+        return;
+      }
+
+      preview.srcObject = mediaStream;
+      previewWrap.style.display = "";
+      mediaStream.getTracks().forEach(track => {
+        track.addEventListener("ended", () => { if (live) stopCasting(); });
+      });
+
+      setStatus("Connecting to stream server…");
+      try {
+        pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVER }] });
+        mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
+
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+        await waitForIceGathering(pc);
+
+        const res = await fetch(whipUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/sdp" },
+          body: pc.localDescription.sdp,
+        });
+        if (!res.ok) throw new Error(`Server rejected publish (${res.status})`);
+
+        const answerSdp = await res.text();
+        await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+        const location = res.headers.get("Location");
+        whipResourceUrl = location ? new URL(location, whipUrl).toString() : null;
+
+        live = true;
+        castBtn.textContent = "Stop stream";
+        castBtn.classList.remove("btn-primary");
+        castBtn.classList.add("btn-danger");
+        setStatus("Live!", "live");
+      } catch (err) {
+        setStatus("Failed to start stream: " + err.message, "error");
+        teardown();
+      } finally {
+        castBtn.disabled = false;
+      }
+    }
+
+    function waitForIceGathering(peerConnection) {
+      if (peerConnection.iceGatheringState === "complete") return Promise.resolve();
+      return new Promise(resolve => {
+        function check() {
+          if (peerConnection.iceGatheringState === "complete") {
+            peerConnection.removeEventListener("icegatheringstatechange", check);
+            resolve();
+          }
+        }
+        peerConnection.addEventListener("icegatheringstatechange", check);
+        // Don't hang forever waiting for every candidate.
+        setTimeout(resolve, 3000);
+      });
+    }
+
+    async function stopCasting() {
+      castBtn.disabled = true;
+      if (whipResourceUrl) {
+        try { await fetch(whipResourceUrl, { method: "DELETE" }); } catch (err) { /* best-effort */ }
+      }
+      teardown();
+      setStatus("");
+      castBtn.disabled = false;
+    }
+
+    function teardown() {
+      live = false;
+      if (pc) { pc.close(); pc = null; }
+      if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
+      whipResourceUrl = null;
+      preview.srcObject = null;
+      previewWrap.style.display = "none";
+      castBtn.textContent = "Start casting";
+      castBtn.classList.remove("btn-danger");
+      castBtn.classList.add("btn-primary");
+    }
+
+    castBtn.addEventListener("click", () => {
+      if (live) {
+        stopCasting();
+      } else {
+        startCasting();
+      }
+    });
+  </script>
+</body>
+</html>
