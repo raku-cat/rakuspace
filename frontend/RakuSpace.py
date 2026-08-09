@@ -940,6 +940,8 @@ def verify_webhook():
     direction = req.get("direction")
     status = req.get("status")
 
+    log.info("verify_webhook: direction=%s status=%s url=%s", direction, status, url)
+
     # Enabling the webrtc provider in AdmissionWebhooks (needed to authorize
     # WHIP publishes) also routes WebRTC *playback* connections through this
     # same webhook, arriving as direction=="outgoing" against the publisher
@@ -949,15 +951,19 @@ def verify_webhook():
     # before the provider-host allowlist below, which only makes sense for
     # incoming publish attempts.
     if direction != "incoming":
+        log.info("verify_webhook: allowing non-incoming (playback) request unconditionally")
         return jsonify({"allowed": True})
 
     parsed_uri = urlparse(url)
-    #print(f"DEBUG Parsed URI: {parsed_uri}")
 
     # 2. Safely extract hostname, defaulting to empty string if None
     hostname = parsed_uri.hostname or ""
 
     if hostname != OME_PROVIDER_HOST and hostname not in RTMP_ALT_HOSTS:
+        log.info(
+            "verify_webhook: denying, hostname %r not in allowlist (OME_PROVIDER_HOST=%r RTMP_ALT_HOSTS=%r)",
+            hostname, OME_PROVIDER_HOST, RTMP_ALT_HOSTS,
+        )
         return deny
 
     # We only care about publish/open
@@ -987,6 +993,7 @@ def verify_webhook():
             _set_notify_state(userid, "live")
             _set_live_state(username, "live")
             new_url = f"{RTMP_HOST}/{username}"
+            log.info("verify_webhook: allowing publish for username=%s, rewriting to new_url=%s", username, new_url)
             return jsonify({
                 "allowed": True,
                 "new_url": new_url,
@@ -994,6 +1001,7 @@ def verify_webhook():
                 "reason": "authorized"
             })
         else:
+            log.info("verify_webhook: denying publish for userid=%s, streamkey mismatch", userid)
             return deny
 
     if direction == "incoming" and status == "closing":
