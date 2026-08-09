@@ -9,10 +9,24 @@ The important section is:
 	<ControlServerUrl>http://0.0.0.0:6868/auth/ome</ControlServerUrl>
 	<Timeout>3000</Timeout>
 	<Enables>
-		<Providers>rtmp webrtc</Providers>
+		<Providers>rtmp,webrtc</Providers>
+		<Publishers>webrtc</Publishers>
 	</Enables>
 </AdmissionWebhooks>
 ```
+
+**`<Providers>`/`<Publishers>` values are comma-separated**, not space-separated -- `rtmp webrtc`
+silently fails to match either protocol (OME never calls the webhook for anything, so RTMP
+publishes go completely unauthorized/un-renamed and playback can never find the stream by its
+friendly `<username>` name). This bit us once already; it's why `verify_webhook()` logging
+showed nothing at all, even for RTMP.
+
+`<Providers>` gates *publish* (ingest) admission calls (`"direction": "incoming"`).
+`<Publishers>` is a separate list that gates *playback* admission calls
+(`"direction": "outgoing"`) -- enabling `webrtc` under `<Providers>` does **not** also enable
+webhook calls for WebRTC playback; that needs its own `webrtc` entry under `<Publishers>`.
+`verify_webhook()` allows any non-`incoming` (i.e. playback) request unconditionally, since this
+webhook only exists to gate who's allowed to *publish*.
 
 The rest just configures the server with a WebRTC publisher as needed by OvenPlayer, an RTMP
 provider for external clients (OBS etc), and a WebRTC provider for WHIP (WebRTC-HTTP
