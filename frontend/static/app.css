@@ -94,7 +94,7 @@ header .new-badge {
   font-weight: 700;
   letter-spacing: 0.02em;
   padding: 1px 4px;
-  border-radius: 3px;
+  border-radius: 3px 0 3px 0;
   line-height: 1.4;
 }
 
