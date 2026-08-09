@@ -89,6 +89,12 @@
     #offline {
       position: absolute;
       inset: 0;
+      /* OvenPlayer's own internal panels (error message box, spinner,
+         controls, etc.) use explicit z-index values up to 9 -- without one
+         of our own, this being later in the DOM isn't enough to paint over
+         them, so its "connection failed" message/icon showed through on top
+         of ours. */
+      z-index: 20;
       display: none;
       align-items: center;
       justify-content: center;
