@@ -33,6 +33,11 @@ OME_PROVIDER_HOST = app.config['OME_PROVIDER_HOST']
 OME_PUBLISHER_HOST = app.config['OME_PUBLISHER_HOST']
 OME_PUBLISHER_PORT = app.config['OME_PUBLISHER_PORT']
 OME_APP_NAME = app.config['OME_APP_NAME']
+# Optional separate LL-HLS endpoint for the /lite player; falls back to the
+# WebRTC publisher host/port when unset (OME serves LL-HLS on the same TLS
+# port by default).
+OME_LLHLS_HOST = app.config.get('OME_LLHLS_HOST') or OME_PUBLISHER_HOST
+OME_LLHLS_PORT = app.config.get('OME_LLHLS_PORT') or OME_PUBLISHER_PORT
 # Base WHIP (WebRTC-HTTP Ingestion Protocol) URL for browser-based publishing
 # via /go_live, e.g. 'https://park.raku.party:3334/rakuspace'. The route
 # appends '/<userid>_<streamkey>'. Must resolve to a host OME_PROVIDER_HOST/
@@ -660,11 +665,24 @@ threading.Thread(target=_notify_reconciler, daemon=True).start()
 # --- Routes ---
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", lite_prefix="")
+
+@app.route("/lite")
+@app.route("/lite/")
+def index_lite():
+    return render_template("index.html", lite_prefix="/lite")
 
 @app.route("/multistream")
 def multistream():
-    return render_template("multistream.html", chat_url=irc_embed_url(IRC_EMBED_MULTISTREAM_CHANNEL))
+    return render_template(
+        "multistream.html", lite_prefix="", chat_url=irc_embed_url(IRC_EMBED_MULTISTREAM_CHANNEL)
+    )
+
+@app.route("/lite/multistream")
+def multistream_lite():
+    return render_template(
+        "multistream.html", lite_prefix="/lite", chat_url=irc_embed_url(IRC_EMBED_MULTISTREAM_CHANNEL)
+    )
 
 @app.route("/go_live")
 @require_auth
@@ -743,6 +761,34 @@ def play_stream(streamname):
             OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
             OME_APP_NAME=OME_APP_NAME
         )
+
+
+@app.route("/lite/live/<streamname>")
+def play_stream_lite(streamname):
+    db = get_db()
+    with db:
+        cur = db.cursor()
+        cur.execute("SELECT stream_title, offline_image_url FROM users WHERE username=?", (streamname,))
+        row = cur.fetchone()
+        streamtitle = row["stream_title"] if row else None
+        offline_image_url = row["offline_image_url"] if row else None
+
+        return render_template(
+            "player_lite.html",
+            streamname=streamname,
+            streamtitle=streamtitle,
+            offline_image_url=offline_image_url,
+            OME_LLHLS_HOST=OME_LLHLS_HOST,
+            OME_LLHLS_PORT=OME_LLHLS_PORT,
+            OME_APP_NAME=OME_APP_NAME
+        )
+
+
+@app.route("/lite/<path:subpath>")
+def lite_passthrough(subpath):
+    # Anything under /lite/ that isn't explicitly overridden above (settings,
+    # go_live, etc.) resolves to the canonical, non-lite page.
+    return redirect("/" + subpath)
 
 
 @app.route("/stream_info")
