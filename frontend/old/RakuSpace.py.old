@@ -1,0 +1,271 @@
+import base64
+import sqlite3
+import secrets
+import string
+from functools import wraps
+from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort
+from flask_socketio import SocketIO, emit
+import requests
+
+
+app = Flask(__name__)
+socketio = SocketIO(app)
+app.config.from_pyfile('rakuspace.cfg')
+
+# --- Initialize config values ---
+DB_PATH = app.config['DB_PATH']
+OME_PROVIDER_HOST = app.config['OME_PROVIDER_HOST']
+OME_PUBLISHER_HOST = app.config['OME_PUBLISHER_HOST']
+OME_PUBLISHER_PORT = app.config['OME_PUBLISHER_PORT']
+OME_APP_NAME = app.config['OME_APP_NAME']
+OME_RTMP_PROVIDER_PORT = app.config['OME_RTMP_PROVIDER_PORT']
+RTMP_HOST = f"rtmp://{OME_PROVIDER_HOST}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
+
+
+# --- DB helpers ---
+def get_db():
+    db = getattr(g, "_db", None)
+    if db is None:
+        db = g._db = sqlite3.connect(DB_PATH)
+        db.row_factory = sqlite3.Row
+    return db
+
+
+@app.teardown_appcontext
+def close_db(exc):
+    if "db" in g:
+        g.db.close()
+
+
+# --- User / key management ---
+def get_or_create_userkey(username, regen=False):
+    db = get_db()
+    with db:  # automatically commits after insert
+        cur = db.cursor()
+        cur.execute("SELECT userid, streamkey FROM users WHERE username=?", (username,))
+        row = cur.fetchone()
+
+        if row and not regen:
+            userid, streamkey = row["userid"], row["streamkey"]
+        else:
+            streamkey = generate_stream_key()
+            if not row:
+                cur.execute("INSERT INTO users (username, streamkey, discord_id) VALUES (?, ?, ?)", (username, streamkey))
+                userid = cur.lastrowid
+            else:
+                cur.execute("UPDATE users SET streamkey=? WHERE username=?", (streamkey, username))
+                userid = row["userid"]
+
+    return userid, streamkey
+
+def generate_stream_key(length=30):
+    alphabet = string.ascii_letters + string.digits  # a-zA-Z0-9
+    return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+def require_auth(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        username = None
+
+        header_username = (
+            request.headers.get("X-Forwarded-User")
+            or request.headers.get("Remote-User")
+        )
+        if header_username:
+             username = header_username
+
+        if eval(app.config['BASICAUTH_ENABLED']):
+            auth = request.headers.get("Authorization")
+            if auth and auth.startswith("Basic "):
+                try:
+                    import base64
+                    userpass = base64.b64decode(auth.split(" ")[1]).decode()
+                    basicauth_username, _ = userpass.split(":", 1)
+                    username = basicauth_username
+                except Exception:
+                    pass
+        if not username:
+            abort(401)  # Unauthorized
+        # Pass username to the route function as a keyword argument
+        return f(username=username, *args, **kwargs)
+    return decorated
+
+
+# --- Routes ---
+@app.route("/")
+def index():
+    return render_template("index.html")
+
+
+@app.route("/live/<streamname>")
+def play_stream(streamname):
+    db = get_db()
+    with db:
+        cur = db.cursor()
+        try:
+            get_streamtitle = cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
+            streamtitle = cur.fetchone()["stream_title"]
+        except:
+            streamtitle= None
+
+        return render_template(
+            "player.html",
+            streamname=streamname,
+            streamtitle=streamtitle,
+            OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
+            OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
+            OME_APP_NAME=OME_APP_NAME
+        )
+
+
+@app.route("/stream_info")
+@require_auth
+def stream_page(username):
+    # In production this comes from Authelia/NGINX via REMOTE_USER header
+
+    userid, streamkey = get_or_create_userkey(username)
+
+    # Check if Discord is already linked
+    db = get_db()
+    cur = db.cursor()
+    try:
+        get_discordID = cur.execute("SELECT discord_id FROM users WHERE username=?", (username,))
+        discord_id = cur.fetchone()["discord_id"]
+    except:
+        discord_id = None
+
+    try:
+        get_streamtitle = cur.execute("SELECT stream_title FROM users WHERE username=?", (username,))
+        streamtitle = cur.fetchone()["stream_title"]
+    except:
+        streamtitle= None
+
+
+    return render_template(
+        "stream.html",
+        username=username,
+        userid=userid,
+        streamkey=streamkey,
+        streamtitle=streamtitle,
+        rtmp_url=RTMP_HOST,
+        discord_id=discord_id,
+        discord_client_id=app.config["DISCORD_CLIENT_ID"],
+        discord_redirect_uri=app.config["DISCORD_REDIRECT_URI"],
+    )
+
+
+@app.route("/stream_info/regen_key", methods=["POST"])
+@require_auth
+def regen_key(username):
+    get_or_create_userkey(username, regen=True)
+    return redirect(url_for("stream_page"))
+
+@app.route("/stream_info/set_title", methods=["POST"])
+@require_auth
+def set_title(username):
+    streamtitle = request.form.get("streamtitle")
+    print(streamtitle)
+    db = get_db()
+    with db:
+        db.execute("UPDATE users SET stream_title=? WHERE username=?", (streamtitle, username))
+
+    return redirect(url_for("stream_page"))
+
+
+@app.route("/auth/discord/callback")
+@require_auth
+def discord_callback(username):
+    code = request.args.get("code")
+    if not code:
+        return "Missing code", 400
+
+    # Exchange code for token
+    token_resp = requests.post(
+        "https://discord.com/api/oauth2/token",
+        data={
+            "client_id": app.config["DISCORD_CLIENT_ID"],
+            "client_secret": app.config["DISCORD_CLIENT_SECRET"],
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": app.config["DISCORD_REDIRECT_URI"],
+        },
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+    )
+
+    if token_resp.status_code != 200:
+        return f"Token exchange failed: {token_resp.text}", 400
+
+    access_token = token_resp.json()["access_token"]
+
+    # Fetch Discord user info
+    user_resp = requests.get(
+        "https://discord.com/api/users/@me",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+
+    if user_resp.status_code != 200:
+        return f"User fetch failed: {user_resp.text}", 400
+
+    discord_data = user_resp.json()
+    discord_id = discord_data["id"]
+
+    # Save in DB against Authelia username
+    db = get_db()
+    with db:
+        db.execute("UPDATE users SET discord_id=? WHERE username=?", (discord_id, username))
+
+    return redirect(url_for("stream_page"))
+
+
+@app.route("/auth/ome", methods=["POST"])
+def verify_webhook():
+    deny = jsonify({"allowed": False})
+    data = request.json
+    req = data.get("request", {})
+    url = req.get("url", "")
+    direction = req.get("direction")
+    status = req.get("status")
+
+    # We only care about publish/open
+    if direction == "incoming" and status == "opening":
+        # Extract stream key from the end of the URL
+        try:
+            key_part = url[len(RTMP_HOST):]
+            key_part = key_part.strip('/')
+            userid_str, key = key_part.split("_", 1)
+            userid = int(userid_str)
+        except (ValueError, AttributeError):
+            return deny
+
+        # Lookup user from key
+        db = get_db()
+        with db:  # automatically commits after insert
+            cur = db.cursor()
+            cur.execute("SELECT username, streamkey FROM users WHERE userid=?", (userid,))
+            row = cur.fetchone()
+        if not row:
+            return deny
+
+        username, correct_key = row
+        if secrets.compare_digest(correct_key, key):
+            new_url = f"{RTMP_HOST}/{username}"
+            response = jsonify({
+                "allowed": True,
+                "new_url": new_url,
+                "lifetime": 0,
+                "reason": "authorized"
+            })
+            return response
+        else:
+            return deny
+    if status == "closing":
+        return {}
+
+
+# --- Debug Server ---
+SITE_HOST = app.config['SITE_HOST']
+SITE_PORT = app.config['SITE_PORT']
+if __name__ == '__main__':
+    socketio.run(app, host=SITE_HOST, port=int(SITE_PORT),
+                 debug=True, use_reloader=True)

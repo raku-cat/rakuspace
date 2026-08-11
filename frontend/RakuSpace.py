@@ -1,4 +1,6 @@
 import base64
+import hashlib
+import hmac
 import ipaddress
 import json
 import logging
@@ -13,12 +15,14 @@ import urllib.request
 from datetime import datetime, timezone
 from functools import wraps
 from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response
-from flask_socketio import SocketIO, emit
-from urllib.parse import urlparse
+from flask_wtf import CSRFProtect
+from urllib.parse import urlparse, quote
 
 app = Flask(__name__)
-socketio = SocketIO(app)
 app.config.from_pyfile('rakuspace.cfg')
+app.secret_key = app.config['SECRET_KEY']
+
+csrf = CSRFProtect(app)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger(__name__)
@@ -29,10 +33,12 @@ OME_PROVIDER_HOST = app.config['OME_PROVIDER_HOST']
 OME_PUBLISHER_HOST = app.config['OME_PUBLISHER_HOST']
 OME_PUBLISHER_PORT = app.config['OME_PUBLISHER_PORT']
 OME_APP_NAME = app.config['OME_APP_NAME']
-# Optional separate LL-HLS endpoint; falls back to the WebRTC publisher
-# host/port when unset (OME serves LL-HLS on the same TLS port by default).
-OME_LLHLS_HOST = app.config.get('OME_LLHLS_HOST') or OME_PUBLISHER_HOST
-OME_LLHLS_PORT = app.config.get('OME_LLHLS_PORT') or OME_PUBLISHER_PORT
+# Base WHIP (WebRTC-HTTP Ingestion Protocol) URL for browser-based publishing
+# via /go_live, e.g. 'https://park.raku.party:3334/rakuspace'. The route
+# appends '/<userid>_<streamkey>'. Must resolve to a host OME_PROVIDER_HOST/
+# RTMP_ALT_HOSTS accepts, since it's authorized through the same /auth/ome
+# webhook as RTMP. Leave blank to hide the Go Live page's publish controls.
+OME_WHIP_URL = app.config.get('OME_WHIP_URL', '')
 OME_RTMP_PROVIDER_PORT = app.config['OME_RTMP_PROVIDER_PORT']
 RTMP_HOST = f"rtmp://{OME_PROVIDER_HOST}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
 RTMP_ALT_HOSTS = app.config['RTMP_ALT_HOSTS']
@@ -47,9 +53,15 @@ NOTIFY_VALIDATE_URLS = str(app.config.get('NOTIFY_VALIDATE_URLS', 'True')).lower
 NOTIFY_URL_WHITELIST_ENABLED = str(app.config.get('NOTIFY_URL_WHITELIST_ENABLED', 'False')).lower() == 'true'
 NOTIFY_URL_WHITELIST = app.config.get('NOTIFY_URL_WHITELIST', [])
 NOTIFY_SETTLE_SECONDS = int(app.config.get('NOTIFY_SETTLE_SECONDS', 15))
+NOTIFY_OFFLINE_GRACE_SECONDS = int(app.config.get('NOTIFY_OFFLINE_GRACE_SECONDS', 120))
 NOTIFY_TICK_SECONDS = int(app.config.get('NOTIFY_TICK_SECONDS', 5))
 NOTIFY_TIMEOUT_SECONDS = int(app.config.get('NOTIFY_TIMEOUT_SECONDS', 3))
 SITE_PUBLIC_URL = app.config.get('SITE_PUBLIC_URL', '')
+
+# --- IRC chat embed config ---
+IRC_EMBED_BASE_URL = app.config.get('IRC_EMBED_BASE_URL', '')
+IRC_EMBED_SECRET = app.config.get('IRC_EMBED_SECRET', '')
+IRC_EMBED_MULTISTREAM_CHANNEL = app.config.get('IRC_EMBED_MULTISTREAM_CHANNEL', '')
 
 # --- DB helpers ---
 def get_db():
@@ -77,6 +89,7 @@ def ensure_schema():
         "notify_on_offline": "INTEGER NOT NULL DEFAULT 0",
         "notify_config": "TEXT",
         "offline_image_url": "TEXT",
+        "chat_channel": "TEXT",
     }
     db = sqlite3.connect(DB_PATH)
     try:
@@ -94,10 +107,17 @@ ensure_schema()
 
 # --- User / key management ---
 def get_or_create_userkey(username, regen=False):
+    """Returns (userid, streamkey, row), where row is the full existing users
+    row (or None for a newly-created user) -- callers that need the other
+    columns can read them off `row` instead of issuing a second SELECT."""
     db = get_db()
     with db:  # automatically commits after insert
         cur = db.cursor()
-        cur.execute("SELECT userid, streamkey FROM users WHERE username=?", (username,))
+        cur.execute(
+            "SELECT userid, streamkey, stream_title, notify_url, notify_builtin, notify_on_live, "
+            "notify_on_offline, offline_image_url, chat_channel FROM users WHERE username=?",
+            (username,),
+        )
         row = cur.fetchone()
 
         if row and not regen:
@@ -107,15 +127,38 @@ def get_or_create_userkey(username, regen=False):
             if not row:
                 cur.execute("INSERT INTO users (username, streamkey) VALUES (?, ?)", (username, streamkey))
                 userid = cur.lastrowid
+                row = None
             else:
                 cur.execute("UPDATE users SET streamkey=? WHERE username=?", (streamkey, username))
                 userid = row["userid"]
 
-    return userid, streamkey
+    return userid, streamkey, row
 
 def generate_stream_key(length=30):
     alphabet = string.ascii_letters + string.digits  # a-zA-Z0-9
     return ''.join(secrets.choice(alphabet) for _ in range(length))
+
+
+# --- IRC chat embed ---
+def irc_embed_url(channel):
+    """Mint a signed embed URL for `channel`, or None if chat embeds aren't
+    configured or the channel is blank/invalid. Token scheme is compatible
+    with omusubi.trans's irc-embed-thing (src/token.js): a 96-bit HMAC-SHA256
+    of the canonicalized channel name, base64url-encoded with no padding.
+    Deterministic and unexpiring by design -- nothing is stored on either
+    side, the shared secret is the entire contract."""
+    if not IRC_EMBED_BASE_URL or not IRC_EMBED_SECRET or not channel:
+        return None
+    c = channel.strip()
+    if not c or any(ch in c for ch in ' \t,\x00\r\n'):
+        return None
+    if c[0] not in '#&':
+        c = '#' + c
+    c = c.lower().translate(str.maketrans('[]\\~', '{}|^'))
+    token = base64.urlsafe_b64encode(
+        hmac.new(IRC_EMBED_SECRET.encode(), c.encode(), hashlib.sha256).digest()[:12]
+    ).rstrip(b'=').decode()
+    return f"{IRC_EMBED_BASE_URL.rstrip('/')}/?channel={quote(c)}&token={token}"
 
 
 def require_auth(f):
@@ -130,6 +173,12 @@ def require_auth(f):
         if header_username:
              username = header_username
 
+        # Deliberately not real auth: the password half is decoded and thrown
+        # away, so *any* password authenticates as the given username. This
+        # exists purely as a zero-setup way to switch users for local
+        # development without standing up a real auth layer (Authelia etc)
+        # in front. Never enable this in a deployment reachable by anyone
+        # other than the developer running it.
         if str(app.config['BASICAUTH_ENABLED']).lower() == 'true':
             auth = request.headers.get("Authorization")
             if auth and auth.startswith("Basic "):
@@ -149,9 +198,15 @@ def require_auth(f):
 # --- Go-live notifications ---
 # OME's open/close events only update in-memory state here; a background
 # reconciler thread is the only thing that actually sends notifications, once
-# a user's state has been stable for NOTIFY_SETTLE_SECONDS. This debounces
-# flapping connections (rapid reconnect/restart) into a single notification
-# instead of spamming the target URL on every OME event.
+# a user's state has been stable long enough: NOTIFY_SETTLE_SECONDS for going
+# live, or the longer NOTIFY_OFFLINE_GRACE_SECONDS for going offline. The
+# offline side gets the longer grace period so a brief drop (OME restart,
+# a network blip) that recovers within that window never counts as a real
+# offline -- the entry flips back to "live" before it's ever notified, so no
+# offline notification fires and the reconnect isn't treated as a fresh
+# stream start either. This debounces flapping connections (rapid
+# reconnect/restart) into a single notification instead of spamming the
+# target URL on every OME event.
 _notify_lock = threading.Lock()
 _notify_state = {}  # userid -> {"state": "live"|"offline", "changed_at": ts, "notified_state": ...}
 
@@ -565,7 +620,8 @@ def _notify_reconciler():
             for userid, entry in _notify_state.items():
                 if entry["state"] == entry["notified_state"]:
                     continue
-                if now - entry["changed_at"] < NOTIFY_SETTLE_SECONDS:
+                settle = NOTIFY_OFFLINE_GRACE_SECONDS if entry["state"] == "offline" else NOTIFY_SETTLE_SECONDS
+                if now - entry["changed_at"] < settle:
                     continue
                 due.append((userid, entry["state"]))
                 entry["notified_state"] = entry["state"]
@@ -602,41 +658,31 @@ threading.Thread(target=_notify_reconciler, daemon=True).start()
 
 
 # --- Routes ---
-def get_stream_title(streamname):
-    """Shared stream_title lookup used by both the OvenPlayer and /next player routes."""
-    db = get_db()
-    with db:
-        cur = db.cursor()
-        cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
-        row = cur.fetchone()
-        return row["stream_title"] if row else None
-
-
-def get_stream_offline_image(streamname):
-    db = get_db()
-    with db:
-        cur = db.cursor()
-        cur.execute("SELECT offline_image_url FROM users WHERE username=?", (streamname,))
-        row = cur.fetchone()
-        return row["offline_image_url"] if row else None
-
-
 @app.route("/")
 def index():
-    return render_template("index.html", next_prefix="")
-
-@app.route("/next")
-@app.route("/next/")
-def index_next():
-    return render_template("index.html", next_prefix="/next")
+    return render_template("index.html")
 
 @app.route("/multistream")
 def multistream():
-    return render_template("multistream.html", next_prefix="")
+    return render_template("multistream.html", chat_url=irc_embed_url(IRC_EMBED_MULTISTREAM_CHANNEL))
 
-@app.route("/next/multistream")
-def multistream_next():
-    return render_template("multistream.html", next_prefix="/next")
+@app.route("/go_live")
+@require_auth
+def go_live(username):
+    userid, streamkey, _ = get_or_create_userkey(username)
+    # OME only recognizes a publish URL as WHIP ingest (as opposed to its
+    # self-defined WebRTC signalling protocol) when ?direction=whip is
+    # present -- see https://docs.ovenmediaengine.com/live-source/webrtc.
+    # Without it OME 404s the request entirely (never reaching the
+    # AdmissionWebhook), which also means it never sets CORS headers on the
+    # response (a known OME limitation), so the browser reports it as a
+    # blocked CORS request rather than a 404.
+    whip_url = f"{OME_WHIP_URL.rstrip('/')}/{userid}_{streamkey}?direction=whip" if OME_WHIP_URL else None
+    return render_template(
+        "golive.html",
+        username=username,
+        whip_url=whip_url,
+    )
 
 @app.route("/api/check/<streamname>")
 def check_stream(streamname):
@@ -676,100 +722,74 @@ def live_events(streamname):
     )
 
 
-
 @app.route("/live/<streamname>")
 def play_stream(streamname):
-    streamtitle = get_stream_title(streamname)
-    offline_image_url = get_stream_offline_image(streamname)
-    return render_template(
-        "player.html",
-        streamname=streamname,
-        streamtitle=streamtitle,
-        offline_image_url=offline_image_url,
-        OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
-        OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
-        OME_APP_NAME=OME_APP_NAME
-    )
-
-
-@app.route("/next/live/<streamname>")
-def play_stream_next(streamname):
-    streamtitle = get_stream_title(streamname)
-    offline_image_url = get_stream_offline_image(streamname)
-    return render_template(
-        "player_next.html",
-        streamname=streamname,
-        streamtitle=streamtitle,
-        offline_image_url=offline_image_url,
-        OME_LLHLS_HOST=OME_LLHLS_HOST,
-        OME_LLHLS_PORT=OME_LLHLS_PORT,
-        OME_APP_NAME=OME_APP_NAME
-    )
-
-
-@app.route("/next/<path:subpath>")
-def next_passthrough(subpath):
-    # Anything under /next/ that isn't explicitly overridden above (settings,
-    # notifications, etc.) resolves to the canonical, non-next page.
-    return redirect("/" + subpath)
-
-
-def _render_stream_page(username, next_prefix="", **overrides):
-    userid, streamkey = get_or_create_userkey(username)
-
     db = get_db()
-    cur = db.cursor()
-    cur.execute(
-        "SELECT stream_title, notify_url, notify_builtin, notify_on_live, notify_on_offline, offline_image_url "
-        "FROM users WHERE username=?",
-        (username,),
-    )
-    row = cur.fetchone()
-    context = {
-        "username": username,
-        "userid": userid,
-        "streamkey": streamkey,
-        "streamtitle": row["stream_title"] if row else None,
-        "rtmp_urls": RTMP_URLS,
-        "notify_url": row["notify_url"] if row else None,
-        "notify_builtin": bool(row["notify_builtin"]) if row else False,
-        "notify_on_live": bool(row["notify_on_live"]) if row else True,
-        "notify_on_offline": bool(row["notify_on_offline"]) if row else False,
-        "offline_image_url": row["offline_image_url"] if row else None,
-        "notify_error": None,
-        "next_prefix": next_prefix,
-    }
-    context.update(overrides)
-    return render_template("stream.html", **context)
+    with db:
+        cur = db.cursor()
+        cur.execute("SELECT stream_title, offline_image_url, chat_channel FROM users WHERE username=?", (streamname,))
+        row = cur.fetchone()
+        streamtitle = row["stream_title"] if row else None
+        offline_image_url = row["offline_image_url"] if row else None
+        chat_url = irc_embed_url(row["chat_channel"] if row else None)
+
+        return render_template(
+            "player.html",
+            streamname=streamname,
+            streamtitle=streamtitle,
+            offline_image_url=offline_image_url,
+            chat_url=chat_url,
+            OME_PUBLISHER_HOST=OME_PUBLISHER_HOST,
+            OME_PUBLISHER_PORT=OME_PUBLISHER_PORT,
+            OME_APP_NAME=OME_APP_NAME
+        )
 
 
 @app.route("/stream_info")
 @require_auth
 def stream_page(username):
     # In production this comes from Authelia/NGINX via REMOTE_USER header
-    return _render_stream_page(username, next_prefix="")
 
+    userid, streamkey, row = get_or_create_userkey(username)
 
-@app.route("/next/stream_info")
-@require_auth
-def stream_page_next(username):
-    return _render_stream_page(username, next_prefix="/next")
+    streamtitle = row["stream_title"] if row else None
+    notify_url = row["notify_url"] if row else None
+    notify_builtin = bool(row["notify_builtin"]) if row else False
+    notify_on_live = bool(row["notify_on_live"]) if row else True
+    notify_on_offline = bool(row["notify_on_offline"]) if row else False
+    offline_image_url = row["offline_image_url"] if row else None
+    chat_channel = row["chat_channel"] if row else None
+
+    return render_template(
+        "stream.html",
+        username=username,
+        userid=userid,
+        streamkey=streamkey,
+        streamtitle=streamtitle,
+        rtmp_urls=RTMP_URLS,
+        notify_url=notify_url,
+        notify_builtin=notify_builtin,
+        notify_on_live=notify_on_live,
+        notify_on_offline=notify_on_offline,
+        offline_image_url=offline_image_url,
+        chat_channel=chat_channel,
+        notify_error=None,
+    )
 
 
 @app.route("/stream_info/regen_key", methods=["POST"])
 @require_auth
 def regen_key(username):
-    dest = "stream_page_next" if request.form.get("next_prefix") == "/next" else "stream_page"
     get_or_create_userkey(username, regen=True)
-    return redirect(url_for(dest))
+    return redirect(url_for("stream_page"))
 
 
 @app.route("/stream_info/save_settings", methods=["POST"])
 @require_auth
 def save_settings(username):
-    next_prefix = "/next" if request.form.get("next_prefix") == "/next" else ""
     streamtitle = request.form.get("streamtitle")
     offline_image_url = (request.form.get("offline_image_url") or "").strip()
+    chat_channel = (request.form.get("chat_channel") or "").strip()
     notify_url = (request.form.get("notify_url") or "").strip()
     notify_builtin = request.form.get("notify_builtin") == "on"
     notify_on_live = request.form.get("notify_on_live") == "on"
@@ -780,11 +800,16 @@ def save_settings(username):
         error = _validate_notify_url(notify_url)
 
     if error:
-        return _render_stream_page(
-            username,
-            next_prefix=next_prefix,
+        userid, streamkey, _row = get_or_create_userkey(username)
+        return render_template(
+            "stream.html",
+            username=username,
+            userid=userid,
+            streamkey=streamkey,
             streamtitle=streamtitle,
+            rtmp_urls=RTMP_URLS,
             offline_image_url=offline_image_url,
+            chat_channel=chat_channel,
             notify_url=notify_url,
             notify_builtin=notify_builtin,
             notify_on_live=notify_on_live,
@@ -795,11 +820,12 @@ def save_settings(username):
     db = get_db()
     with db:
         db.execute(
-            "UPDATE users SET stream_title=?, offline_image_url=?, notify_url=?, notify_builtin=?, notify_on_live=?, "
-            "notify_on_offline=? WHERE username=?",
+            "UPDATE users SET stream_title=?, offline_image_url=?, chat_channel=?, notify_url=?, notify_builtin=?, "
+            "notify_on_live=?, notify_on_offline=? WHERE username=?",
             (
                 streamtitle,
                 offline_image_url or None,
+                chat_channel or None,
                 notify_url or None,
                 int(notify_builtin),
                 int(notify_on_live),
@@ -808,7 +834,7 @@ def save_settings(username):
             ),
         )
 
-    return redirect(url_for("stream_page_next" if next_prefix == "/next" else "stream_page"))
+    return redirect(url_for("stream_page"))
 
 
 @app.route("/stream_info/notifications")
@@ -909,6 +935,7 @@ def test_notification(username):
 
 
 @app.route("/auth/ome", methods=["POST"])
+@csrf.exempt  # called by OME directly, not a browser -- no CSRF token to check
 def verify_webhook():
     deny = jsonify({"allowed": False})
     data = request.json or {} # Fallback to empty dict if no json
@@ -921,13 +948,30 @@ def verify_webhook():
     direction = req.get("direction")
     status = req.get("status")
 
+    log.info("verify_webhook: direction=%s status=%s url=%s", direction, status, url)
+
+    # Enabling the webrtc provider in AdmissionWebhooks (needed to authorize
+    # WHIP publishes) also routes WebRTC *playback* connections through this
+    # same webhook, arriving as direction=="outgoing" against the publisher
+    # host rather than the provider host. This webhook only exists to gate
+    # who's allowed to publish, not who's allowed to watch, so allow any
+    # non-publish (outgoing/playback) admission request unconditionally
+    # before the provider-host allowlist below, which only makes sense for
+    # incoming publish attempts.
+    if direction != "incoming":
+        log.info("verify_webhook: allowing non-incoming (playback) request unconditionally")
+        return jsonify({"allowed": True})
+
     parsed_uri = urlparse(url)
-    #print(f"DEBUG Parsed URI: {parsed_uri}")
 
     # 2. Safely extract hostname, defaulting to empty string if None
     hostname = parsed_uri.hostname or ""
 
     if hostname != OME_PROVIDER_HOST and hostname not in RTMP_ALT_HOSTS:
+        log.info(
+            "verify_webhook: denying, hostname %r not in allowlist (OME_PROVIDER_HOST=%r RTMP_ALT_HOSTS=%r)",
+            hostname, OME_PROVIDER_HOST, RTMP_ALT_HOSTS,
+        )
         return deny
 
     # We only care about publish/open
@@ -957,6 +1001,7 @@ def verify_webhook():
             _set_notify_state(userid, "live")
             _set_live_state(username, "live")
             new_url = f"{RTMP_HOST}/{username}"
+            log.info("verify_webhook: allowing publish for username=%s, rewriting to new_url=%s", username, new_url)
             return jsonify({
                 "allowed": True,
                 "new_url": new_url,
@@ -964,11 +1009,16 @@ def verify_webhook():
                 "reason": "authorized"
             })
         else:
+            log.info("verify_webhook: denying publish for userid=%s, streamkey mismatch", userid)
             return deny
 
-    if status == "closing":
+    if direction == "incoming" and status == "closing":
         # Best-effort: record the stream as offline for notification purposes.
         # Any malformed path is silently ignored -- this is not an auth decision.
+        # Gated on direction == "incoming" to match the "opening" branch above --
+        # without it, a viewer's outgoing playback connection closing (e.g. their
+        # player reconnecting) was mistaken for the streamer's publish connection
+        # dropping, marking the stream offline while the streamer was still live.
         try:
             key_part = parsed_uri.path.strip('/').split('/')[-1]
             userid_str, _key = key_part.split("_", 1)
@@ -990,5 +1040,4 @@ def verify_webhook():
 SITE_HOST = app.config['SITE_HOST']
 SITE_PORT = app.config['SITE_PORT']
 if __name__ == '__main__':
-    socketio.run(app, host=SITE_HOST, port=int(SITE_PORT),
-                 debug=True, use_reloader=True)
+    app.run(host=SITE_HOST, port=int(SITE_PORT), debug=True, use_reloader=True)

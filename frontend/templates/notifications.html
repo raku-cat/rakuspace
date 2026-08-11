@@ -3,146 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <title>Notification Settings</title>
-  <style>
-    :root {
-      /* Catppuccin Macchiato */
-      --ctp-crust: #181926;
-      --ctp-mantle: #1e2030;
-      --ctp-base: #24273a;
-      --ctp-surface0: #363a4f;
-      --ctp-surface1: #494d64;
-      --ctp-surface2: #5b6078;
-      --ctp-overlay0: #6e738d;
-      --ctp-overlay1: #8087a2;
-      --ctp-subtext0: #a5adcb;
-      --ctp-subtext1: #b8c0e0;
-      --ctp-text: #cad3f5;
-      --ctp-green: #a6da95;
-      --ctp-red: #ed8796;
-      --ctp-pink: #f5bde6;
-    }
-
-    *, *::before, *::after { box-sizing: border-box; }
-
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      min-height: 100vh;
-      background: var(--ctp-base);
-      color: var(--ctp-text);
-    }
-
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 0 24px;
-      height: 48px;
-      background: var(--ctp-crust);
-      border-bottom: 1px solid var(--ctp-surface0);
-    }
-    header a.login-btn {
-      font-size: 0.8em;
-      color: var(--ctp-subtext0);
-      text-decoration: none;
-      padding: 4px 10px;
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 4px;
-    }
-    header a.login-btn:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
-
-    main {
-      max-width: 640px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-
-    h1 { font-size: 1.3em; margin: 0 0 4px 0; color: var(--ctp-subtext1); }
-    .sub { color: var(--ctp-subtext0); font-size: 0.9em; margin: 0 0 20px 0; }
-
-    .card {
-      background: var(--ctp-surface0);
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 8px;
-      padding: 20px 24px;
-      margin-bottom: 20px;
-    }
-    .card h2 { margin: 0 0 4px 0; font-size: 1.05em; color: var(--ctp-subtext1); }
-    .card .hint { font-size: 0.8em; color: var(--ctp-overlay1); margin: 0 0 14px 0; }
-
-    label { display: block; font-size: 0.85em; color: var(--ctp-subtext0); margin: 12px 0 4px; }
-    label.inline { display: inline; margin: 0 0 0 6px; color: var(--ctp-text); }
-
-    input[type="text"], input[type="password"], input[type="number"], textarea, select {
-      width: 100%;
-      padding: 7px 10px;
-      font-size: 0.95em;
-      background: var(--ctp-mantle);
-      border: 1px solid var(--ctp-surface2);
-      border-radius: 4px;
-      color: var(--ctp-text);
-      outline: none;
-      font-family: inherit;
-    }
-    input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus,
-    textarea:focus, select:focus { border-color: var(--ctp-overlay1); }
-    input[type="color"] {
-      width: 60px;
-      height: 32px;
-      padding: 2px;
-      background: var(--ctp-mantle);
-      border: 1px solid var(--ctp-surface2);
-      border-radius: 4px;
-    }
-    textarea { resize: vertical; min-height: 50px; }
-
-    .checkbox-row { display: flex; align-items: center; margin: 4px 0 14px; }
-    .checkbox-row input { width: auto; margin: 0; accent-color: var(--ctp-pink); }
-
-    .row { display: flex; gap: 12px; }
-    .row > div { flex: 1; }
-
-    .variables { font-size: 0.78em; color: var(--ctp-overlay0); margin-top: 2px; }
-    .variables code { background: var(--ctp-mantle); border: 1px solid var(--ctp-surface1); border-radius: 3px; padding: 1px 4px; }
-
-    .event-panel { border-top: 1px dashed var(--ctp-surface1); margin-top: 14px; padding-top: 6px; }
-
-    button {
-      padding: 8px 16px;
-      font-size: 0.95em;
-      font-weight: 600;
-      background: var(--ctp-pink);
-      color: var(--ctp-crust);
-      border: 1px solid var(--ctp-pink);
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button:hover { filter: brightness(1.08); background: var(--ctp-pink); }
-    button.secondary {
-      background: var(--ctp-mantle);
-      color: var(--ctp-subtext0);
-      border: 1px solid var(--ctp-surface2);
-      font-weight: normal;
-      font-size: 0.85em;
-      padding: 6px 12px;
-    }
-    button.secondary:hover { color: var(--ctp-text); border-color: var(--ctp-overlay1); background: var(--ctp-mantle); filter: none; }
-
-    .actions { display: flex; gap: 10px; align-items: center; margin-top: 4px; }
-
-    .banner {
-      padding: 10px 14px;
-      border-radius: 4px;
-      margin-bottom: 16px;
-      font-size: 0.9em;
-    }
-    .banner.error { background: var(--ctp-mantle); border: 1px solid #5a2a2a; color: var(--ctp-red); }
-    .banner.status { background: var(--ctp-mantle); border: 1px solid #2f4a34; color: var(--ctp-green); }
-  </style>
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
 </head>
 <body>
 
   <header>
+    <div class="header-left">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+        <span class="brand-name">RakuSpace</span>
+      </a>
+      <span class="page-title">Notification Settings</span>
+    </div>
     <a class="login-btn" href="{{ url_for('stream_page') }}">&larr; Back to Streamer Settings</a>
   </header>
 
@@ -163,6 +36,7 @@
     {% endif %}
 
     <form method="post" action="{{ url_for('set_notifications') }}" id="notify-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
       <!-- Discord -->
       <div class="card">

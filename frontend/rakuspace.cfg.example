@@ -1,3 +1,7 @@
+# Secret key used to sign session cookies and CSRF tokens. Generate a real
+# random value per deployment, e.g.: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY = 'change-me'
+
 # Host of your RTMP provider (where users will be streaming to).
 OME_PROVIDER_HOST = 'localhost'
 OME_RTMP_PROVIDER_PORT = '1935'
@@ -18,6 +22,15 @@ OME_PUBLISHER_PORT = '3334'
 # OME_LLHLS_HOST = 'localhost'
 # OME_LLHLS_PORT = '3334'
 
+# Base WHIP (WebRTC-HTTP Ingestion Protocol) ingest URL, used by the
+# in-browser "Go Live!" screenshare page (/go_live) to publish directly from
+# the browser instead of an external RTMP client. Must be https:// and its
+# host must be OME_PROVIDER_HOST (or one of RTMP_ALT_HOSTS), since it's
+# authorized through the same AdmissionWebhook as RTMP. The app appends
+# '/<userid>_<streamkey>' itself. Leave blank to hide the Go Live page's
+# publish controls (e.g. 'https://park.raku.party:3334/rakuspace').
+OME_WHIP_URL = ''
+
 # Where flask will bind to using its built in debug server, only used
 # when running the debug server, gunicorn etc will not use this.
 SITE_HOST='localhost'
@@ -27,8 +40,11 @@ SITE_PORT='5000'
 # as the script.
 DB_PATH = 'users.db'
 
-# Enable reading headers from http basic auth, put behind a default
-# disabled option due to security risks.
+# Enable reading the username from HTTP Basic Auth. The password is not
+# checked at all -- this is not real authentication, just a zero-setup way
+# to switch users during local development without a real auth layer
+# (Authelia etc) in front. Only ever enable this on a machine only you can
+# reach.
 BASICAUTH_ENABLED = 'False'
 
 # --- Go-live notifications ---
@@ -39,9 +55,24 @@ NOTIFY_URL_WHITELIST_ENABLED = 'False'
 NOTIFY_URL_WHITELIST = []            # list of allowed hostnames, e.g. ['discord.com']
 # Debounce: how long a stream state must be stable before we notify, and how often we scan.
 NOTIFY_SETTLE_SECONDS = 15
+# Longer debounce specifically for going offline, so a brief drop (OME restart, network
+# blip) that reconnects within this window is treated as a continuation of the same
+# stream, not a new offline+live notification pair.
+NOTIFY_OFFLINE_GRACE_SECONDS = 120
 NOTIFY_TICK_SECONDS = 5
 # HTTP timeout for the outbound notification POST.
 NOTIFY_TIMEOUT_SECONDS = 3
 # Optional public base URL used to build the stream link in the payload (e.g. https://raku.party).
 # Leave empty to omit the link.
 SITE_PUBLIC_URL = ''
+
+# --- IRC chat embed (omusubi.trans IRC) ---
+# Public base URL of the irc-embed-thing instance, e.g. 'https://chat.example.com'.
+# Leave empty to disable chat embeds entirely.
+IRC_EMBED_BASE_URL = ''
+# Must be byte-identical to irc-embed-thing's server.secret / IRC_EMBED_SECRET env var
+# (32+ chars). Leave empty to disable chat embeds entirely.
+IRC_EMBED_SECRET = ''
+# Channel embedded in the /multistream multiplexer's chat pane, e.g. '#general'.
+# Leave empty to hide that pane.
+IRC_EMBED_MULTISTREAM_CHANNEL = ''

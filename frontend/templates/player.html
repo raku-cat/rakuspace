@@ -2,11 +2,99 @@
 <html>
 <head>
   <title>Watching {{ streamname }}</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <script src="{{ url_for('static', filename='ovenplayer/ovenplayer.js') }}"></script>
   <style>
+    :root {
+      /* Same video/chat width ratio knob as multistream.html. */
+      --video-weight: 4;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+    }
+    .layout {
+      display: flex;
+      width: 100vw;
+      height: 100vh;
+    }
+    .video-pane {
+      flex: var(--video-weight) 1 0;
+      height: 100%;
+      position: relative;
+      overflow: hidden;
+      min-width: 0;
+    }
+    #player {
+      width: 100%;
+      height: 100%;
+    }
+
+    /* --- chat pane (mirrors multistream.html) --- */
+
+    .chat-pane {
+      flex: 1 1 0;
+      height: 100%;
+      min-width: 0;
+    }
+    .chat-pane.hidden { display: none; }
+    .chat-pane iframe {
+      display: block;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+
+    /* --- chat toggle burger (mirrors multistream.html, minus the dropdown) --- */
+
+    .menu-wrap {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 100;
+    }
+    .global-menu-btn {
+      width: 36px;
+      height: 36px;
+      border: none;
+      border-radius: 4px;
+      background: rgba(0, 0, 0, 0.6);
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+    .global-menu-btn span {
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: #fff;
+    }
+    .menu-wrap:hover .global-menu-btn,
+    .menu-wrap.just-added .global-menu-btn {
+      opacity: 1;
+    }
+
     #offline {
       position: absolute;
       inset: 0;
+      /* OvenPlayer's own internal panels (error message box, spinner,
+         controls, etc.) use explicit z-index values up to 9 -- without one
+         of our own, this being later in the DOM isn't enough to paint over
+         them, so its "connection failed" message/icon showed through on top
+         of ours. */
+      z-index: 20;
       display: none;
       align-items: center;
       justify-content: center;
@@ -17,6 +105,19 @@
       background-position: center;
       text-align: center;
       padding: 0 16px;
+      /* This backdrop sits outside OvenPlayer's own wrapper element, so it
+         being on top (needed for the z-index fix above) also swallowed the
+         mouseenter/mousemove events OvenPlayer's own hover-to-show-controls
+         logic needs -- and since that only ever arms on a genuine boundary
+         crossing, not on a DOM/visibility change, controls stayed stuck
+         hidden even after this overlay was hidden again. Letting pointer
+         events pass through the empty backdrop (while keeping the message
+         and retry button clickable via pointer-events: auto below) fixes
+         that without giving up the visual coverage. */
+      pointer-events: none;
+    }
+    #offline > div {
+      pointer-events: auto;
     }
     #offline.has-image::before {
       content: "";
@@ -30,26 +131,52 @@
     #offline-retry {
       position: relative;
       margin-top: 16px;
-      padding: 8px 20px;
-      font-size: 0.5em;
+      width: 44px;
+      height: 44px;
+      padding: 0;
       color: white;
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid rgba(255, 255, 255, 0.4);
-      border-radius: 4px;
+      border-radius: 50%;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
     }
     #offline-retry:hover {
       background: rgba(255, 255, 255, 0.25);
     }
+    #offline-retry svg {
+      width: 22px;
+      height: 22px;
+    }
   </style>
 </head>
-<body style="margin:0; background:black; display:flex; align-items:center; justify-content:center; height:100vh;">
-  <div id="player" style="width:100%; height:100%;"></div>
-  <div id="offline">
-    <div>
-      <div><span>{{ streamname }} is offline</span></div>
-      <button id="offline-retry" type="button">Try to connect anyway</button>
+<body>
+  <div class="layout" id="layout">
+    <div class="video-pane">
+      <div id="player"></div>
+      <div id="offline">
+        <div>
+          <div><span>{{ streamname }} is offline</span></div>
+          <button id="offline-retry" type="button" title="Try to connect anyway" aria-label="Try to connect anyway">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 11a8 8 0 1 0-2.34 5.66" />
+              <polyline points="20 4 20 11 13 11" />
+            </svg>
+          </button>
+        </div>
+      </div>
     </div>
+    <div class="chat-pane hidden" id="chat-pane">
+      <iframe id="chat-iframe" src="about:blank"></iframe>
+    </div>
+  </div>
+
+  <div class="menu-wrap" id="menu-wrap" style="display:none;">
+    <button class="global-menu-btn" id="chat-toggle-btn" title="Show/hide chat">
+      <span></span><span></span><span></span>
+    </button>
   </div>
 
   <script>
@@ -59,15 +186,21 @@
     const appName = "{{ OME_APP_NAME }}";
     const streamTitle = "{{ streamtitle }}";
     const offlineImageUrl = {{ (offline_image_url or "") | tojson }};
+    const chatUrl = {{ (chat_url or "") | tojson }};
 
-    // No initial `sources` -- creating the player with a source and
-    // autoStart would fire a connection attempt to OME immediately on page
-    // load, before we've heard from the SSE live-state feed below. The
-    // first (and every subsequent) load is instead driven off that feed,
-    // same as the /next player; autoStart is kept so each load() still
-    // attempts to play automatically when the browser allows it.
+    // Always attempt a connection immediately on page load, regardless of
+    // what the SSE live-state feed below ends up saying -- this is what
+    // gets the player initialized at all, and covers the case where a
+    // streamer is already live before this page's SSE connection delivers
+    // its first state. Beyond this first attempt, reconnects are driven by
+    // that feed (see the "live" listener below) plus a slow backoff loop as
+    // a fallback; the offline overlay itself is decided purely by the
+    // player's own real connection events, never by the feed.
     const player = OvenPlayer.create("player", {
-      sources: [],
+      sources: [{
+        type: "webrtc",
+        file: `wss://${host}:${port}/${appName}/${streamName}`,
+      }],
       autoStart: true,
       playbackRates: [1],
       disableSeekUI: true,
@@ -83,97 +216,235 @@
       offlineMsg.classList.add("has-image");
     }
 
-    let liveState = null; // "live" | "offline", set by the /api/live SSE push below
     let localRetryTimer = null;
+
+    // Local reconnect loop is only a fallback for a missed/stale live signal
+    // (e.g. a server restart resets the in-memory live state to "offline"
+    // for a streamer who's actually still publishing, and no fresh webhook
+    // event will arrive until they reconnect) -- normally the SSE "live"
+    // push below does the reconnecting instantly. Since that fallback case
+    // is rare, back off each failed attempt instead of hammering OME every
+    // few seconds forever; reset to the base delay the moment we're told
+    // the stream is live or actually see it play.
+    const RECONNECT_BASE_MS = 5000;
+    const RECONNECT_MAX_MS = 20 * 60 * 1000; // cap at 20 minutes between attempts
+    const RECONNECT_MULTIPLIER = 1.6;
+    let retryDelay = RECONNECT_BASE_MS;
 
     function setOffline() {
       offlineMsg.style.display = "flex";
-      // Only worth retrying on our own if OME still thinks the stream is up
-      // (a transient viewer-side glitch); if OME says offline, there's
-      // nothing to reconnect to until the push below says otherwise.
-      if (liveState === "live") {
-        retryStream();
-      }
+      scheduleRetry();
     }
     function setOnline() {
       clearTimeout(localRetryTimer);
+      retryDelay = RECONNECT_BASE_MS;
       offlineMsg.style.display = "none";
       document.getElementById('player').style.display = "block";
-      player.play();
     }
 
+    // Every player.load() spins up a brand-new native <video>/<audio> element
+    // (unmuted, full volume by default) but OvenPlayer never re-applies its
+    // own tracked mute/volume state onto it -- so a mute forced by the
+    // autoplay fallback below, or a volume level the viewer dragged the
+    // slider to, was silently dropped on the next reconnect: audio would
+    // come back at full native volume while the slider kept showing whatever
+    // it last displayed. Track the viewer's own explicit choices separately
+    // from adjustments we make ourselves, and re-apply *those* at the start
+    // of every load instead of leaving whatever a fresh element defaults to.
+    //
+    // Also persisted to localStorage keyed by stream name, so a volume set
+    // while watching a stream directly on /live/<name> carries over when
+    // that same stream shows up as a tile inside /multistream (a same-origin
+    // iframe embed of this same page), and vice versa -- both are just
+    // separate loads of this page for the same streamName.
+    const volumeStorageKey = `rakuspace-volume-${streamName}`;
+    let userMuted = false;
+    let userVolume = null; // null until the viewer (or OvenPlayer's default) reports one
+    try {
+      const saved = JSON.parse(localStorage.getItem(volumeStorageKey));
+      if (saved && typeof saved === "object") {
+        if (typeof saved.muted === "boolean") userMuted = saved.muted;
+        if (typeof saved.volume === "number") userVolume = saved.volume;
+      }
+    } catch (err) {
+      // localStorage unavailable or bad data -- fall back to defaults.
+    }
+    function saveVolumePrefs() {
+      try {
+        localStorage.setItem(volumeStorageKey, JSON.stringify({ muted: userMuted, volume: userVolume }));
+      } catch (err) {
+        // ignore -- just won't persist across reloads/views
+      }
+    }
+    let settingProgrammatically = false;
+    function setMuteProgrammatic(muted) {
+      settingProgrammatically = true;
+      player.setMute(muted);
+      settingProgrammatically = false;
+    }
+    function setVolumeProgrammatic(volume) {
+      settingProgrammatically = true;
+      player.setVolume(volume);
+      settingProgrammatically = false;
+    }
+    player.on("mute", (e) => {
+      if (!settingProgrammatically) {
+        // Came from the viewer clicking the player's own mute button.
+        userMuted = e.mute;
+        saveVolumePrefs();
+      }
+    });
+    player.on("volumeChanged", (e) => {
+      if (!settingProgrammatically) {
+        // Came from the viewer dragging the player's own volume slider.
+        userVolume = e.volume;
+        saveVolumePrefs();
+      }
+    });
 
-    function checkAutoplay() {
-        if(player.getState() != "playing") {
-            //console.log("fooey")
-            const audio = new Audio();
-            audio.play().then(() => {
-                return;
-            }).catch(error => {
-                // Autoplay was prevented (e.g., by browser policy)
-                console.log("Autoplay prevented:", error.name);
-                player.setMute(true);
-                setOnline();
-            });
+    // Autoplay ladder: try playing with sound, and only fall back to muted
+    // playback if the browser actually rejects the unmuted attempt. OvenPlayer's
+    // own play()/getState() don't surface the underlying play() promise, so we
+    // go straight to the real <video>/<audio> element (player.getMediaElement())
+    // instead of probing autoplay policy with an unrelated decoy Audio() object,
+    // which was unreliable and left streams muted (or stuck as "offline") far
+    // more often than the browser's actual policy required.
+    function attemptPlayback() {
+      const media = player.getMediaElement();
+      setMuteProgrammatic(userMuted);
+      if (userVolume !== null) setVolumeProgrammatic(userVolume);
+      if (!media) {
+        player.play();
+        return;
+      }
+      const attempt = media.play();
+      if (!attempt || typeof attempt.catch !== "function") return;
+      attempt.catch(() => {
+        // Unmuted autoplay was rejected -- browsers are far more permissive
+        // about muted autoplay, so retry once with sound off. This doesn't
+        // touch userMuted -- it's a fallback we imposed, not the viewer's own
+        // choice, so the next reconnect should still try unmuted first.
+        if (!userMuted) setMuteProgrammatic(true);
+        const mutedAttempt = media.play();
+        if (mutedAttempt && typeof mutedAttempt.catch === "function") {
+          // Even muted autoplay was rejected -- stop trying and leave the
+          // player paused; the big-play-button lets the viewer start it.
+          mutedAttempt.catch(() => {});
         }
+      });
     }
-    
+
     // Listen for events
     player.on("error", setOffline);
     player.on("ended", setOffline);
     player.on("stateChanged", (e) => {
-      //console.log("nani");
-      if(e.newstate === "playing") setOnline();
-      if(e.newstate === "loading") checkAutoplay();
+      if (e.newstate === "playing") setOnline();
+      if (e.newstate === "loading") attemptPlayback();
     });
 
-    // Retry logic -- only used for transient local errors while OME still
-    // reports the stream as live; see setOffline() above.
-    function retryStream() {
-      clearTimeout(localRetryTimer);
-      localRetryTimer = setTimeout(() => {
-        player.load([{
-          type: "webrtc",
-          file: `wss://${host}:${port}/${appName}/${streamName}`
-        }]);
-      }, 3000);
-    }
-
-    // Manual escape hatch on the offline overlay itself: the overlay sits on
-    // top of the player and blocks its big-play-button, and before the first
-    // SSE "live" event ever arrives (e.g. right after a server restart, with
-    // a streamer already live) there's no source loaded at all -- nothing
-    // under the overlay to click. This always attempts a connection directly
-    // against OME, independent of our tracked liveState, so the viewer can
-    // recover even if that state is stale or wrong.
-    document.getElementById("offline-retry").addEventListener("click", () => {
-      clearTimeout(localRetryTimer);
+    function connectSource() {
       player.load([{
         type: "webrtc",
         file: `wss://${host}:${port}/${appName}/${streamName}`
       }]);
-      player.play();
+    }
+
+    // Fallback retry loop -- see the comment above retryDelay. Each failed
+    // attempt waits longer than the last, up to RECONNECT_MAX_MS, instead of
+    // polling OME on a fixed short interval indefinitely.
+    function scheduleRetry() {
+      clearTimeout(localRetryTimer);
+      localRetryTimer = setTimeout(connectSource, retryDelay);
+      retryDelay = Math.min(retryDelay * RECONNECT_MULTIPLIER, RECONNECT_MAX_MS);
+    }
+
+    // Manual escape hatch on the offline overlay: always attempts a
+    // connection directly against OME, and resets the backoff since this is
+    // effectively a fresh signal from the viewer that it's worth trying.
+    document.getElementById("offline-retry").addEventListener("click", () => {
+      clearTimeout(localRetryTimer);
+      retryDelay = RECONNECT_BASE_MS;
+      connectSource();
     });
 
-    // Drive (re)connect attempts off OME's own publish start/stop events
-    // (relayed via /auth/ome into this SSE feed) instead of blindly retrying
-    // a dead connection: only load a fresh source when actually told the
-    // stream is live, and stop the instant we're told it isn't.
+    // OME's publish start/stop events (relayed via /auth/ome) drive
+    // reconnects for the common case: when told the stream just went live
+    // and we're not currently playing, jump the fallback retry queue and
+    // reconnect right away, resetting the backoff since we now have a real
+    // signal instead of a guess. An "offline" push is ignored -- it can
+    // arrive spuriously (e.g. off an unrelated viewer connection closing)
+    // and isn't needed anyway, since the fallback loop above already covers
+    // "stop trying so aggressively once we're offline"; only the player's
+    // own real connection events decide when to show the offline overlay.
     const liveEvents = new EventSource(`/api/live/${streamName}/events`);
     liveEvents.addEventListener("state", (e) => {
-      const state = e.data;
-      if (state === liveState) return;
-      liveState = state;
-      if (state === "live") {
-        player.load([{
-          type: "webrtc",
-          file: `wss://${host}:${port}/${appName}/${streamName}`
-        }]);
-        player.play();
-      } else {
-        setOffline();
+      if (e.data === "live" && player.getState() !== "playing") {
+        clearTimeout(localRetryTimer);
+        retryDelay = RECONNECT_BASE_MS;
+        connectSource();
       }
     });
+
+    // ---- IRC chat toggle ----
+    //
+    // Only offered when the streamer has a channel configured AND this page
+    // isn't itself sitting inside an iframe -- e.g. when this /live/<name>
+    // page is loaded as a tile inside /multistream, that page already has
+    // its own chat pane, so showing a second nested chat here would just be
+    // redundant/confusing. window.top throws instead of resolving to a
+    // different-origin ancestor for a strictly cross-origin embed; either
+    // way that means "not the top-level page", so treat it the same as
+    // being iframed.
+    let inIframe = true;
+    try {
+      inIframe = window.self !== window.top;
+    } catch (err) {
+      inIframe = true;
+    }
+
+    if (chatUrl && !inIframe) {
+      const menuWrap = document.getElementById("menu-wrap");
+      const chatPane = document.getElementById("chat-pane");
+      const chatIframe = document.getElementById("chat-iframe");
+      const chatToggleBtn = document.getElementById("chat-toggle-btn");
+      const storageKey = `rakuspace-chat-visible-${streamName}`;
+
+      let chatVisible = true; // shown by default when a channel is configured
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved !== null) chatVisible = saved === "1";
+      } catch (err) {
+        // localStorage unavailable (private browsing etc.) -- fall back to the default.
+      }
+
+      let chatLoaded = false;
+      function applyChatVisibility() {
+        chatPane.classList.toggle("hidden", !chatVisible);
+        if (chatVisible && !chatLoaded) {
+          chatIframe.src = chatUrl;
+          chatLoaded = true;
+        } else if (!chatVisible && chatLoaded) {
+          chatIframe.src = "about:blank";
+          chatLoaded = false;
+        }
+      }
+
+      menuWrap.style.display = "";
+      applyChatVisibility();
+
+      chatToggleBtn.addEventListener("click", () => {
+        chatVisible = !chatVisible;
+        applyChatVisibility();
+        try {
+          localStorage.setItem(storageKey, chatVisible ? "1" : "0");
+        } catch (err) {
+          // ignore -- just won't persist across reloads
+        }
+      });
+
+      menuWrap.classList.add("just-added");
+      setTimeout(() => menuWrap.classList.remove("just-added"), 3000);
+    }
   </script>
 </body>
 </html>

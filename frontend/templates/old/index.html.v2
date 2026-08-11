@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>RakuSpace</title>
+  <style>
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+    #stream-form { display: flex; gap: 6px; align-items: center; }
+    #stream-input { padding: 6px 8px; font-size: 1em; border: 1px solid #ccc; border-radius: 4px; }
+    #stream-hint { font-size: 0.85em; height: 1.2em; margin-top: 4px; }
+    #stream-hint.known { color: green; }
+    #stream-hint.unknown { color: #c00; }
+    #recent { margin-top: 1.5em; text-align: left; }
+    #recent ul { margin: 4px 0 0 0; padding-left: 1.2em; }
+    #recent li { margin: 2px 0; }
+  </style>
+</head>
+<body>
+  <h1>Enter a stream name</h1>
+  <form id="stream-form">
+    <input id="stream-input" type="text" placeholder="stream name" autocomplete="off">
+    <button type="submit">Watch</button>
+  </form>
+  <div id="stream-hint"></div>
+
+  <div id="recent" style="display:none">
+    <b>Recent Streams:</b>
+    <ul id="recent-list"></ul>
+  </div>
+
+  <script>
+    const input = document.getElementById("stream-input");
+    const hint = document.getElementById("stream-hint");
+    const recentDiv = document.getElementById("recent");
+    const recentList = document.getElementById("recent-list");
+
+    // --- Recent streams (localStorage) ---
+    function getRecent() {
+      try { return JSON.parse(localStorage.getItem("recentStreams") || "[]"); }
+      catch { return []; }
+    }
+    function saveRecent(name) {
+      let list = getRecent().filter(n => n !== name);
+      list.unshift(name);
+      list = list.slice(0, 5);
+      localStorage.setItem("recentStreams", JSON.stringify(list));
+    }
+    function renderRecent() {
+      const list = getRecent();
+      if (list.length === 0) { recentDiv.style.display = "none"; return; }
+      recentDiv.style.display = "";
+      recentList.innerHTML = list.map(n =>
+        `<li><a href="/live/${encodeURIComponent(n)}">${n}</a></li>`
+      ).join("");
+    }
+    renderRecent();
+
+    // --- Stream name validation ---
+    let debounceTimer;
+    input.addEventListener("input", function() {
+      const name = input.value.trim();
+      clearTimeout(debounceTimer);
+      hint.textContent = "";
+      hint.className = "";
+      if (!name) return;
+      debounceTimer = setTimeout(async () => {
+        try {
+          const res = await fetch("/api/check/" + encodeURIComponent(name));
+          const data = await res.json();
+          if (data.known) {
+            hint.textContent = "✓ known streamer";
+            hint.className = "known";
+          } else {
+            hint.textContent = "✗ unknown stream name";
+            hint.className = "unknown";
+          }
+        } catch { hint.textContent = ""; }
+      }, 400);
+    });
+
+    // --- Form submit ---
+    document.getElementById("stream-form").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const name = input.value.trim();
+      if (name) {
+        saveRecent(name);
+        window.location.href = "/live/" + encodeURIComponent(name);
+      }
+    });
+  </script>
+</body>
+</html>

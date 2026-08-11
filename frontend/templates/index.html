@@ -2,139 +2,18 @@
 <html>
 <head>
   <title>RakuSpace</title>
+  <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
-    :root {
-      /* Catppuccin Macchiato */
-      --ctp-crust: #181926;
-      --ctp-mantle: #1e2030;
-      --ctp-base: #24273a;
-      --ctp-surface0: #363a4f;
-      --ctp-surface1: #494d64;
-      --ctp-surface2: #5b6078;
-      --ctp-overlay0: #6e738d;
-      --ctp-overlay1: #8087a2;
-      --ctp-subtext0: #a5adcb;
-      --ctp-subtext1: #b8c0e0;
-      --ctp-text: #cad3f5;
-      --ctp-blue: #8aadf4;
-      --ctp-green: #a6da95;
-      --ctp-red: #ed8796;
-      --ctp-pink: #f5bde6;
-    }
+    body { display: flex; flex-direction: column; }
 
-    *, *::before, *::after { box-sizing: border-box; }
+    main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
 
-    body {
-      font-family: sans-serif;
-      margin: 0;
-      min-height: 100vh;
-      background: var(--ctp-base);
-      color: var(--ctp-text);
-      display: flex;
-      flex-direction: column;
-    }
-
-    /* Header */
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: flex-end;
-      padding: 0 24px;
-      height: 48px;
-      background: var(--ctp-crust);
-      border-bottom: 1px solid var(--ctp-surface0);
-    }
-    header a.login-btn {
-      font-size: 0.8em;
-      color: var(--ctp-subtext0);
-      text-decoration: none;
-      padding: 4px 10px;
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 4px;
-    }
-    header a.login-btn:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
-
-    header .header-links {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    header a.multistream-link {
-      position: relative;
-      font-size: 0.8em;
-      color: var(--ctp-subtext0);
-      text-decoration: none;
-      padding: 4px 10px;
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 4px;
-    }
-    header a.multistream-link:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
-    header a.multistream-link .new-badge {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      background: var(--ctp-red);
-      color: var(--ctp-crust);
-      font-size: 0.65em;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      padding: 1px 4px;
-      border-radius: 3px;
-      line-height: 1.4;
-    }
-
-    /* Main */
-    main {
-      flex: 1;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .card {
-      background: var(--ctp-surface0);
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 8px;
-      padding: 28px 32px;
-      width: 340px;
-    }
-
-    .card h1 {
-      margin: 0 0 18px 0;
-      font-size: 1.1em;
-      font-weight: 600;
-      color: var(--ctp-subtext1);
-    }
+    .card { width: 340px; padding: 28px 32px; margin-bottom: 0; }
+    .card h1 { margin: 0 0 18px 0; font-size: 1.1em; font-weight: 600; }
 
     #stream-form { display: flex; gap: 6px; }
-    #stream-input {
-      flex: 1;
-      padding: 7px 10px;
-      font-size: 1em;
-      background: var(--ctp-mantle);
-      border: 1px solid var(--ctp-surface2);
-      border-radius: 4px;
-      color: var(--ctp-text);
-      outline: none;
-    }
-    #stream-input:focus { border-color: var(--ctp-overlay1); }
-    #stream-input::placeholder { color: var(--ctp-overlay0); }
-
-    button[type="submit"] {
-      padding: 7px 14px;
-      font-size: 1em;
-      font-weight: 600;
-      background: var(--ctp-pink);
-      color: var(--ctp-crust);
-      border: 1px solid var(--ctp-pink);
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    button[type="submit"]:hover { filter: brightness(1.08); background: var(--ctp-pink); }
-
-    #stream-hint { font-size: 0.8em; height: 1.2em; margin-top: 6px; }
-    #stream-hint.known { color: var(--ctp-green); }
-    #stream-hint.unknown { color: var(--ctp-red); }
+    #stream-input { flex: 1; }
 
     /* Recent */
     #recent {
@@ -165,15 +44,22 @@
       list-style: disc;
     }
     #recent-list li { margin: 3px 0; font-size: 0.9em; }
-    #recent-list a { color: var(--ctp-blue); text-decoration: none; }
+    #recent-list a { color: var(--ctp-pink); text-decoration: none; }
     #recent-list a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
 
   <header>
+    <div class="header-left">
+      <a class="brand" href="{{ url_for('index') }}">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="">
+        <span class="brand-name">RakuSpace</span>
+      </a>
+    </div>
     <div class="header-links">
-      <a class="multistream-link" href="{{ next_prefix }}/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
+      <a class="golive-link" href="/go_live">Go Live!<span class="new-badge">New!</span></a>
+      <a class="multistream-link" href="/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
       <a class="login-btn" href="/stream_info">Streamer Settings</a>
     </div>
   </header>
@@ -199,7 +85,6 @@
   </main>
 
   <script>
-    const LIVE_PREFIX = "{{ next_prefix }}";
     const input = document.getElementById("stream-input");
     const hint = document.getElementById("stream-hint");
     const recentDiv = document.getElementById("recent");
@@ -220,9 +105,14 @@
       const list = getRecent();
       if (list.length === 0) { recentDiv.style.display = "none"; return; }
       recentDiv.style.display = "";
-      recentList.innerHTML = list.map(n =>
-        `<li><a href="${LIVE_PREFIX}/live/${encodeURIComponent(n)}">${n}</a></li>`
-      ).join("");
+      recentList.replaceChildren(...list.map(n => {
+        const li = document.createElement("li");
+        const a = document.createElement("a");
+        a.href = "/live/" + encodeURIComponent(n);
+        a.textContent = n;
+        li.appendChild(a);
+        return li;
+      }));
     }
     renderRecent();
 
@@ -260,7 +150,7 @@
       const name = input.value.trim();
       if (name) {
         saveRecent(name);
-        window.location.href = LIVE_PREFIX + "/live/" + encodeURIComponent(name);
+        window.location.href = "/live/" + encodeURIComponent(name);
       }
     });
   </script>

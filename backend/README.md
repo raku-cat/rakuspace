@@ -6,16 +6,59 @@ These configs probably wont even launch if used without modification.
 The important section is:
 ```
 <AdmissionWebhooks>
-	<ControlServerUrl>http://0.0.0.0:6868/verify</ControlServerUrl>
+	<ControlServerUrl>http://0.0.0.0:6868/auth/ome</ControlServerUrl>
 	<Timeout>3000</Timeout>
 	<Enables>
-		<Providers>rtmp</Providers>
+		<Providers>rtmp,webrtc</Providers>
+		<Publishers>webrtc</Publishers>
 	</Enables>
 </AdmissionWebhooks>
 ```
 
-The rest just configures the server with a WebRTC publisher as needed by OvenPlayer, and an RTMP provider.
+**`<Providers>`/`<Publishers>` values are comma-separated**, not space-separated -- `rtmp webrtc`
+silently fails to match either protocol (OME never calls the webhook for anything, so RTMP
+publishes go completely unauthorized/un-renamed and playback can never find the stream by its
+friendly `<username>` name). This bit us once already; it's why `verify_webhook()` logging
+showed nothing at all, even for RTMP.
+
+`<Providers>` gates *publish* (ingest) admission calls (`"direction": "incoming"`).
+`<Publishers>` is a separate list that gates *playback* admission calls
+(`"direction": "outgoing"`) -- enabling `webrtc` under `<Providers>` does **not** also enable
+webhook calls for WebRTC playback; that needs its own `webrtc` entry under `<Publishers>`.
+`verify_webhook()` allows any non-`incoming` (i.e. playback) request unconditionally, since this
+webhook only exists to gate who's allowed to *publish*.
+
+The rest just configures the server with a WebRTC publisher as needed by OvenPlayer, an RTMP
+provider for external clients (OBS etc), and a WebRTC provider for WHIP (WebRTC-HTTP
+Ingestion Protocol) ingest, used by RakuSpace's in-browser "Go Live!" screenshare page
+(`/go_live`). `verify_webhook()` in `RakuSpace.py` authorizes a publish purely by parsing
+`<userid>_<streamkey>` off the end of the publish URL and checking the hostname -- it doesn't
+care whether the transport was RTMP or WHIP, so no app-side changes were needed to support
+WHIP; OME just needs the `webrtc` provider enabled here and a `<WebRTC>` block under
+`<Providers>` (see `Server.xml`/`Server.xml_Origin`) so there's something to publish *to*.
+
+The WHIP ingest and the WebRTC playback publisher share the same signalling `TLSPort` (3334)
+and ICE candidate/TCP relay config -- no separate port is needed. RakuSpace's `OME_WHIP_URL`
+config value (see `rakuspace.cfg.example`) should point at `https://<host>:<TLSPort>/<app-name>`
+for whichever host has the `webrtc` provider enabled. The app appends
+`/<userid>_<streamkey>?direction=whip` itself -- the `?direction=whip` query string is
+mandatory, it's what tells OME to treat the connection as WHIP ingest rather than its own
+self-defined WebRTC signalling protocol (see
+[OME's WHIP docs](https://docs.ovenmediaengine.com/live-source/webrtc)).
+
+### CORS and the `<Defaults><CrossDomains>` gotcha
+A browser publishing over WHIP sends a CORS preflight, and OME had a long-standing bug
+([#1593](https://github.com/AirenSoft/OvenMediaEngine/issues/1593)) where it never attached
+`Access-Control-Allow-Origin` to certain responses -- notably WHIP's own `201 Created` on a
+successful publish, and any `404`. That's fixed as of **OME 0.19.1**, but the fix also *moved*
+where the default CORS policy is configured: `<VirtualHost><CrossDomains>` (still present in
+these sample files, and all that pre-0.19.1 OME understands) is deprecated and silently
+ignored on 0.19.1+. The new location is `<Server><Defaults><CrossDomains>`, directly under
+`<Server>` and before `<VirtualHosts>` -- see `Server.xml`/`Server.xml_Origin`, which set it in
+both places for compatibility across versions. If you're on OME 0.19.1+ and still see missing
+CORS headers, check that `<Defaults><CrossDomains>` is actually present; if you're older than
+0.19.1, no config fixes this and an OME upgrade is the only way around the bug.
 
 
 ## Origin/Edge configuration
-Though not in any way necessary, the files `Server.xml_Origin` and `Server.xml_Edge` provide a sample configuration needed to run an edge instance and origin instance of OME instead of having the provider and publisher on one instance.
+Though not in any way necessary, the files `Server.xml_Origin` and `Server.xml_Edge` provide a sample configuration needed to run an edge instance and origin instance of OME instead of having the provider and publisher on one instance. The WebRTC/WHIP *provider* (ingest) belongs on the origin (alongside RTMP) since that's where publishes land; `Server.xml_Edge` stays playback-only and doesn't need it.
