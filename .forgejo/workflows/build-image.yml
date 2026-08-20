@@ -28,7 +28,7 @@ jobs:
       - name: Fetch registry JWT
         id: jwt
         env:
-          AUD: u:2:c0489812-2523-4791-876a-e7a5ab7d3d19
+          AUD: ${{ secrets.ACTIONS_PACKAGE_PUBLISH_CLAIM }}
         run: |
           jwt=$( \
             curl --fail \
