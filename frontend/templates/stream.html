@@ -9,7 +9,6 @@
   <style>
     .card { margin-bottom: 24px; }
     label { margin: 0 0 4px; }
-    .banner { background: var(--ctp-mantle); border: 1px solid #5a2a2a; color: var(--ctp-red); }
   </style>
 </head>
 <body>
@@ -72,7 +71,7 @@
     <h2 class="section-heading">Notifications</h2>
     <div class="card">
       {% if notify_error %}
-      <div class="banner">{{ notify_error }}</div>
+      <div class="banner error">{{ notify_error }}</div>
       {% endif %}
 
       <label for="notify_url">Notification URL</label>
