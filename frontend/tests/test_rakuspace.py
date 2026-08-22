@@ -3,6 +3,8 @@ import re
 import sqlite3
 import string
 
+import pytest
+
 import RakuSpace as rakuspace
 
 
@@ -284,3 +286,134 @@ def test_webhook_closing_is_best_effort_and_never_errors(client, db_path):
         json={"request": {"direction": "incoming", "status": "closing", "url": url}},
     )
     assert resp.status_code == 200
+
+
+# --- viewer tracking ---
+
+@pytest.fixture(autouse=True)
+def _clear_viewers():
+    # These tests write directly into rakuspace._viewers, which is
+    # process-global state shared across the whole test session.
+    rakuspace._viewers.clear()
+    yield
+    rakuspace._viewers.clear()
+
+
+def test_viewer_snapshot_empty_stream():
+    assert rakuspace._viewer_snapshot("nobody-watching") == (0, [])
+
+
+def test_viewer_snapshot_counts_anonymous_connections_individually():
+    rakuspace._register_viewer("stream", "conn-a", None)
+    rakuspace._register_viewer("stream", "conn-b", None)
+    count, named = rakuspace._viewer_snapshot("stream")
+    assert count == 2
+    assert named == []
+
+
+def test_viewer_snapshot_dedups_same_username_across_connections():
+    rakuspace._register_viewer("stream", "conn-a", "alice")
+    rakuspace._register_viewer("stream", "conn-b", "alice")  # e.g. two tabs
+    count, named = rakuspace._viewer_snapshot("stream")
+    assert count == 1
+    assert named == ["alice"]
+
+
+def test_viewer_snapshot_mixes_named_and_anonymous():
+    rakuspace._register_viewer("stream", "conn-a", "alice")
+    rakuspace._register_viewer("stream", "conn-b", "bob")
+    rakuspace._register_viewer("stream", "conn-c", None)
+    count, named = rakuspace._viewer_snapshot("stream")
+    assert count == 3
+    assert named == ["alice", "bob"]
+
+
+def test_viewer_snapshot_is_scoped_per_stream():
+    rakuspace._register_viewer("stream-a", "conn-1", "alice")
+    rakuspace._register_viewer("stream-b", "conn-2", "bob")
+    assert rakuspace._viewer_snapshot("stream-a") == (1, ["alice"])
+    assert rakuspace._viewer_snapshot("stream-b") == (1, ["bob"])
+
+
+def test_unregister_viewer_removes_entry():
+    rakuspace._register_viewer("stream", "conn-a", "alice")
+    rakuspace._unregister_viewer("stream", "conn-a")
+    assert rakuspace._viewer_snapshot("stream") == (0, [])
+    assert "stream" not in rakuspace._viewers
+
+
+def test_unregister_unknown_conn_is_a_noop():
+    rakuspace._register_viewer("stream", "conn-a", "alice")
+    rakuspace._unregister_viewer("stream", "does-not-exist")
+    assert rakuspace._viewer_snapshot("stream") == (1, ["alice"])
+
+
+def test_viewer_snapshot_expires_stale_entries(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(rakuspace.time, "monotonic", lambda: clock[0])
+
+    rakuspace._register_viewer("stream", "conn-a", "alice")
+    assert rakuspace._viewer_snapshot("stream") == (1, ["alice"])
+
+    clock[0] += rakuspace.VIEWER_TTL_SECONDS + 1
+    assert rakuspace._viewer_snapshot("stream") == (0, [])
+    # The stale connection was pruned, not just hidden from the count.
+    assert "stream" not in rakuspace._viewers
+
+
+def test_touch_viewer_resets_the_ttl_clock(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(rakuspace.time, "monotonic", lambda: clock[0])
+
+    rakuspace._register_viewer("stream", "conn-a", "alice")
+    clock[0] += rakuspace.VIEWER_TTL_SECONDS - 1
+    rakuspace._touch_viewer("stream", "conn-a")
+
+    clock[0] += rakuspace.VIEWER_TTL_SECONDS - 1
+    assert rakuspace._viewer_snapshot("stream") == (1, ["alice"])
+
+
+def test_viewers_event_omits_named_list_for_anonymous_viewer():
+    event = rakuspace._viewers_event(3, ["alice", "bob"], viewer_username=None)
+    assert event.startswith("event: viewers\ndata: ")
+    payload = json.loads(event.split("data: ", 1)[1].strip())
+    assert payload == {"count": 3}
+
+
+def test_viewers_event_includes_named_list_for_logged_in_viewer():
+    event = rakuspace._viewers_event(3, ["alice", "bob"], viewer_username="alice")
+    payload = json.loads(event.split("data: ", 1)[1].strip())
+    assert payload == {"count": 3, "viewers": ["alice", "bob"]}
+
+
+def test_resolve_username_returns_none_without_headers(client):
+    with rakuspace.app.test_request_context("/"):
+        assert rakuspace._resolve_username() is None
+
+
+def test_resolve_username_reads_forwarded_user_header(client):
+    with rakuspace.app.test_request_context("/", headers={"X-Forwarded-User": "alice"}):
+        assert rakuspace._resolve_username() == "alice"
+
+
+def test_live_events_registers_and_unregisters_viewer(client):
+    # The route's generator loops forever (it's a long-lived SSE stream), so
+    # it's driven directly here rather than through the test client (which
+    # would hang trying to read a complete response body). Pulling the first
+    # two yields mirrors a client that just connected; closing the generator
+    # mirrors that client disconnecting, which is what should trigger the
+    # finally block that unregisters the viewer.
+    with rakuspace.app.test_request_context(
+        "/api/live/some-streamer/events", headers={"X-Forwarded-User": "alice"}
+    ):
+        resp = rakuspace.live_events("some-streamer")
+        gen = resp.response
+        state_event = next(gen)
+        viewers_event = next(gen)
+        assert state_event == "event: state\ndata: offline\n\n"
+        assert '"count": 1' in viewers_event
+        assert '"viewers": ["alice"]' in viewers_event
+        assert rakuspace._viewer_snapshot("some-streamer") == (1, ["alice"])
+        gen.close()
+
+    assert "some-streamer" not in rakuspace._viewers

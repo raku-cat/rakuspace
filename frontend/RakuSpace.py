@@ -166,33 +166,40 @@ def irc_embed_url(channel):
     return f"{IRC_EMBED_BASE_URL.rstrip('/')}/?channel={quote(c)}&token={token}"
 
 
+def _resolve_username():
+    """Same username resolution require_auth() enforces, but returns None
+    instead of aborting when no identity is found -- for call sites (like the
+    viewer-tracking SSE connection) where an anonymous caller is a valid case,
+    not an error."""
+    header_username = (
+        request.headers.get("X-Forwarded-User")
+        or request.headers.get("Remote-User")
+    )
+    if header_username:
+        return header_username
+
+    # Deliberately not real auth: the password half is decoded and thrown
+    # away, so *any* password authenticates as the given username. This
+    # exists purely as a zero-setup way to switch users for local
+    # development without standing up a real auth layer (Authelia etc)
+    # in front. Never enable this in a deployment reachable by anyone
+    # other than the developer running it.
+    if str(app.config['BASICAUTH_ENABLED']).lower() == 'true':
+        auth = request.headers.get("Authorization")
+        if auth and auth.startswith("Basic "):
+            try:
+                userpass = base64.b64decode(auth.split(" ")[1]).decode()
+                basicauth_username, _ = userpass.split(":", 1)
+                return basicauth_username
+            except Exception:
+                pass
+    return None
+
+
 def require_auth(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        username = None
-
-        header_username = (
-            request.headers.get("X-Forwarded-User")
-            or request.headers.get("Remote-User")
-        )
-        if header_username:
-             username = header_username
-
-        # Deliberately not real auth: the password half is decoded and thrown
-        # away, so *any* password authenticates as the given username. This
-        # exists purely as a zero-setup way to switch users for local
-        # development without standing up a real auth layer (Authelia etc)
-        # in front. Never enable this in a deployment reachable by anyone
-        # other than the developer running it.
-        if str(app.config['BASICAUTH_ENABLED']).lower() == 'true':
-            auth = request.headers.get("Authorization")
-            if auth and auth.startswith("Basic "):
-                try:
-                    userpass = base64.b64decode(auth.split(" ")[1]).decode()
-                    basicauth_username, _ = userpass.split(":", 1)
-                    username = basicauth_username
-                except Exception:
-                    pass
+        username = _resolve_username()
         if not username:
             abort(401)  # Unauthorized
         # Pass username to the route function as a keyword argument
@@ -244,7 +251,9 @@ def _set_notify_state(userid, state):
 # reflect OME's actual state as fast as it arrives. In-memory and
 # single-process, like _notify_state -- fine as long as this app runs as one
 # process, but a multi-worker deployment would need a shared store instead.
-_live_lock = threading.Lock()
+# An RLock (not a plain Lock) because _viewer_snapshot() below re-enters this
+# same lock from inside a wait_for() predicate that's already holding it.
+_live_lock = threading.RLock()
 _live_cond = threading.Condition(_live_lock)
 _live_state = {}  # username -> "live" | "offline"
 
@@ -259,6 +268,74 @@ def _set_live_state(username, state):
 def _get_live_state(username):
     with _live_lock:
         return _live_state.get(username, "offline")
+
+
+# --- Viewer tracking (for player pages) ---
+# Piggybacks on the same per-viewer SSE connection live_events() already
+# holds open: each connection registers itself here when it opens and removes
+# itself in a finally block when it closes, so the count is driven by real
+# connection lifecycle instead of OME's own connection counter, which
+# double-counts things like LL-HLS reloads and doesn't reliably decrement --
+# see https://github.com/AirenSoft/OvenMediaEngine/discussions/1505 and
+# https://github.com/AirenSoft/OvenMediaEngine/issues/374. A stale last_seen
+# also expires an entry on read even if the finally block never runs (e.g. a
+# connection drop the WSGI server never surfaces as generator teardown), so a
+# leaked entry self-heals within one TTL window instead of drifting upward
+# forever the way OME's count does.
+VIEWER_HEARTBEAT_SECONDS = 25
+VIEWER_TTL_SECONDS = VIEWER_HEARTBEAT_SECONDS * 3
+_viewers = {}  # streamname -> {conn_id: {"username": str|None, "last_seen": float}}
+
+
+def _register_viewer(streamname, conn_id, username):
+    with _live_cond:
+        _viewers.setdefault(streamname, {})[conn_id] = {
+            "username": username,
+            "last_seen": time.monotonic(),
+        }
+        _live_cond.notify_all()
+
+
+def _touch_viewer(streamname, conn_id):
+    with _live_lock:
+        entry = _viewers.get(streamname, {}).get(conn_id)
+        if entry:
+            entry["last_seen"] = time.monotonic()
+
+
+def _unregister_viewer(streamname, conn_id):
+    with _live_cond:
+        conns = _viewers.get(streamname)
+        if conns and conns.pop(conn_id, None) is not None:
+            if not conns:
+                del _viewers[streamname]
+            _live_cond.notify_all()
+
+
+def _viewer_snapshot(streamname):
+    """Returns (count, sorted list of distinct logged-in usernames currently
+    watching), pruning any connections that have gone stale (no heartbeat
+    within VIEWER_TTL_SECONDS) as a side effect. Logged-in viewers dedup by
+    username (the same person in two tabs is one viewer); anonymous
+    connections can't be deduped this way and each counts on its own -- the
+    same tradeoff OME's own connection count makes."""
+    now = time.monotonic()
+    with _live_lock:
+        conns = _viewers.get(streamname, {})
+        for cid in [cid for cid, e in conns.items() if now - e["last_seen"] > VIEWER_TTL_SECONDS]:
+            del conns[cid]
+        if not conns and streamname in _viewers:
+            del _viewers[streamname]
+
+        identities = set()
+        named = set()
+        for cid, e in conns.items():
+            if e["username"]:
+                identities.add(e["username"])
+                named.add(e["username"])
+            else:
+                identities.add(cid)
+        return len(identities), sorted(named)
 
 
 def _validate_notify_url(url):
@@ -711,27 +788,65 @@ def check_stream(streamname):
     return jsonify({"known": exists})
 
 
+def _viewers_event(count, named, viewer_username):
+    # The named list is only ever included for connections whose own viewer
+    # is logged in -- an anonymous caller gets the count but never learns who
+    # else is watching, per the visibility the /live page's menu is meant to
+    # offer ("any logged-in viewer" can see who else is around, anonymous
+    # viewers just see the number).
+    payload = {"count": count}
+    if viewer_username:
+        payload["viewers"] = named
+    return f"event: viewers\ndata: {json.dumps(payload)}\n\n"
+
+
 @app.route("/api/live/<streamname>/events")
 def live_events(streamname):
     """Server-Sent Events stream of a user's live/offline state, fed by the
     same OME opening/closing webhook events _set_live_state() records. Lets
     player pages react the instant OME reports a stream start/stop instead of
-    polling or blindly retrying a dead connection on a timer."""
+    polling or blindly retrying a dead connection on a timer.
+
+    Doubles as the viewer-count tracker: opening this connection registers a
+    viewer (see _register_viewer's docstring above for why), and a "viewers"
+    event is pushed alongside "state" whenever the count or named list
+    changes."""
+    conn_id = secrets.token_hex(8)
+    viewer_username = _resolve_username()
+
     def gen():
-        last = _get_live_state(streamname)
-        yield f"event: state\ndata: {last}\n\n"
-        while True:
-            with _live_cond:
-                _live_cond.wait_for(
-                    lambda: _live_state.get(streamname, "offline") != last,
-                    timeout=25,
-                )
-                current = _live_state.get(streamname, "offline")
-            if current != last:
-                last = current
-                yield f"event: state\ndata: {last}\n\n"
-            else:
-                yield ": heartbeat\n\n"  # keep intermediary proxies from timing out the connection
+        _register_viewer(streamname, conn_id, viewer_username)
+        try:
+            last_live = _get_live_state(streamname)
+            last_count, last_named = _viewer_snapshot(streamname)
+            yield f"event: state\ndata: {last_live}\n\n"
+            yield _viewers_event(last_count, last_named, viewer_username)
+            while True:
+                with _live_cond:
+                    _live_cond.wait_for(
+                        lambda: (
+                            _live_state.get(streamname, "offline") != last_live
+                            or _viewer_snapshot(streamname) != (last_count, last_named)
+                        ),
+                        timeout=VIEWER_HEARTBEAT_SECONDS,
+                    )
+                    current_live = _live_state.get(streamname, "offline")
+                _touch_viewer(streamname, conn_id)
+                current_count, current_named = _viewer_snapshot(streamname)
+
+                changed = False
+                if current_live != last_live:
+                    last_live = current_live
+                    yield f"event: state\ndata: {last_live}\n\n"
+                    changed = True
+                if current_count != last_count or current_named != last_named:
+                    last_count, last_named = current_count, current_named
+                    yield _viewers_event(last_count, last_named, viewer_username)
+                    changed = True
+                if not changed:
+                    yield ": heartbeat\n\n"  # keep intermediary proxies from timing out the connection
+        finally:
+            _unregister_viewer(streamname, conn_id)
 
     return Response(
         gen(),
