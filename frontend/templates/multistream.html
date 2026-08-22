@@ -7,11 +7,28 @@
 <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
 <style>
   :root {
-    /* Adjust this one number to change the video-area/chat width ratio.
-       It's the video-pane's flex-grow weight against the chat pane's
-       weight of 1 - e.g. 3 means the video area is 3x as wide as chat,
-       1 means an even split, 6 means a much narrower chat column. */
-    --video-weight: 4;
+    /* Catppuccin Macchiato, mirroring static/app.css. This page is a
+       fullscreen video layout and doesn't load app.css, so the chrome that
+       sits on top of the tiles (menu, name form, tile controls) redeclares
+       the tokens it needs to stay on the same palette as the rest of the
+       site. */
+    --ctp-crust: #181926;
+    --ctp-mantle: #1e2030;
+    --ctp-base: #24273a;
+    --ctp-surface0: #363a4f;
+    --ctp-surface1: #494d64;
+    --ctp-surface2: #5b6078;
+    --ctp-overlay1: #8087a2;
+    --ctp-subtext0: #a5adcb;
+    --ctp-subtext1: #b8c0e0;
+    --ctp-text: #cad3f5;
+    --ctp-green: #a6da95;
+    --ctp-red: #ed8796;
+    --ctp-pink: #f5bde6;
+    --ctp-lavender: #b7bdf8;
+    /* See static/app.css for what these two roles mean. */
+    --accent: var(--ctp-pink);
+    --focus-ring: var(--ctp-lavender);
   }
 
   * {
@@ -37,7 +54,7 @@
   /* --- video multistream area --- */
 
   .video-pane {
-    flex: var(--video-weight) 1 0;
+    flex: 1 1 0;
     height: 100%;
     position: relative;
     overflow: hidden;
@@ -172,18 +189,45 @@
 
   /* --- chat pane --- */
 
+  /* Width is set inline by static/chat-pane.js; this is only the fallback
+     for the moment before that script runs. */
   .chat-pane {
-    flex: 1 1 0;
+    flex: 0 0 auto;
+    width: 340px;
     height: 100%;
     min-width: 0;
   }
   .chat-pane.hidden { display: none; }
+  /* Too narrow to split -- chat covers the tiles instead of squeezing them. */
+  .chat-pane.overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    width: auto;
+    height: auto;
+  }
   .chat-pane iframe {
     display: block;
     width: 100%;
     height: 100%;
     border: 0;
   }
+
+  .chat-resizer {
+    flex: 0 0 auto;
+    width: 6px;
+    cursor: col-resize;
+    background: var(--ctp-surface0);
+    z-index: 15;
+  }
+  .chat-resizer:hover { background: var(--ctp-surface1); }
+  .chat-resizer.hidden { display: none; }
+  .chat-resizer:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+    background: var(--ctp-surface1);
+  }
+  body.chat-resizing { user-select: none; cursor: col-resize; }
 
   /* --- global menu --- */
 
@@ -239,15 +283,29 @@
     padding: 10px 14px;
     background: none;
     border: none;
-    color: #fff;
+    color: var(--ctp-subtext1);
+    font-family: inherit;
     font-size: 14px;
     cursor: pointer;
   }
-  .global-menu button:hover { background: rgba(255, 255, 255, 0.1); }
+  .global-menu button:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+
+  .global-menu-btn:focus-visible,
+  .global-menu button:focus-visible,
+  .tile-close:focus-visible,
+  .name-form button:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+  }
+  .tile-close:focus-visible { opacity: 1; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .global-menu-btn, .tile-close { transition: none; }
+  }
 </style>
 </head>
 <body>
-<div class="layout">
+<div class="layout" id="layout">
   <div class="video-pane">
     <div id="video-root"></div>
   </div>
@@ -269,6 +327,7 @@
   </div>
 </div>
 
+<script src="{{ url_for('static', filename='chat-pane.js') }}"></script>
 <script>
 (function () {
   // The base URL used to build each stream's iframe src: LIVE_BASE + name.
@@ -297,6 +356,26 @@
 
   let dragNode = null;
   let resizeState = null;
+
+  // ---- chat pane sizing ----
+  //
+  // On a narrow viewport chat covers the tiles rather than splitting with
+  // them, so state.chatVisible (the remembered preference from a normal
+  // window) shouldn't silently bury the streams on load -- opening chat
+  // there is a deliberate per-session act instead.
+  let narrowChatOpen = false;
+  const chatSizer = RakuChatPane.create({
+    layout: document.getElementById('layout'),
+    pane: document.getElementById('chat-pane'),
+    storageKey: 'irc-embed-stream-chat-width',
+    onNarrowChange: () => {
+      narrowChatOpen = false;
+      render();
+    },
+  });
+  function chatShown() {
+    return chatSizer.isNarrow() ? narrowChatOpen : state.chatVisible;
+  }
 
   // Persistent cache of leaf DOM elements keyed by node id, reused across
   // renders so that live-loaded stream iframes are never torn down and
@@ -584,19 +663,22 @@
       // menu toggle entirely instead of showing a dead, always-blank pane.
       chatPane.classList.add('hidden');
       chatToggleBtn.style.display = 'none';
+      chatSizer.update(false);
     } else {
-      chatPane.classList.toggle('hidden', !state.chatVisible);
+      const shown = chatShown();
+      chatPane.classList.toggle('hidden', !shown);
+      chatSizer.update(shown);
       chatToggleBtn.style.display = '';
-      chatToggleBtn.textContent = state.chatVisible ? 'Hide chat' : 'Show chat';
+      chatToggleBtn.textContent = shown ? 'Hide chat' : 'Show chat';
 
       // Lazy load/unload: only load the iframe once shown, and unload it
       // (back to about:blank) once hidden, rather than keeping an idle chat
       // connection open behind a hidden pane.
       const chatIframe = document.getElementById('chat-iframe');
-      if (state.chatVisible && !chatLoaded) {
+      if (shown && !chatLoaded) {
         chatIframe.src = CHAT_URL;
         chatLoaded = true;
-      } else if (!state.chatVisible && chatLoaded) {
+      } else if (!shown && chatLoaded) {
         chatIframe.src = 'about:blank';
         chatLoaded = false;
       }
@@ -801,7 +883,11 @@
     menuWrap.classList.remove('open');
   });
   document.getElementById('menu-toggle-chat').addEventListener('click', () => {
-    state.chatVisible = !state.chatVisible;
+    if (chatSizer.isNarrow()) {
+      narrowChatOpen = !narrowChatOpen;
+    } else {
+      state.chatVisible = !state.chatVisible;
+    }
     render();
     menuWrap.classList.remove('open');
   });
