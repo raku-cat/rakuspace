@@ -82,9 +82,56 @@
       background: #fff;
     }
     .menu-wrap:hover .global-menu-btn,
-    .menu-wrap.just-added .global-menu-btn {
+    .menu-wrap.just-added .global-menu-btn,
+    .menu-wrap.open .global-menu-btn {
       opacity: 1;
     }
+
+    .global-menu {
+      display: none;
+      position: absolute;
+      top: 42px;
+      right: 0;
+      background: rgba(20, 20, 20, 0.95);
+      border-radius: 6px;
+      overflow: hidden;
+      min-width: 190px;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+    }
+    .menu-wrap.open .global-menu { display: block; }
+    .global-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      padding: 10px 14px;
+      background: none;
+      border: none;
+      color: #fff;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .global-menu button:hover { background: rgba(255, 255, 255, 0.1); }
+
+    .menu-separator {
+      height: 1px;
+      margin: 4px 0;
+      background: rgba(255, 255, 255, 0.12);
+    }
+
+    .viewer-panel {
+      display: none;
+      max-height: 220px;
+      overflow-y: auto;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .viewer-panel.open { display: block; }
+    .viewer-panel-item,
+    .viewer-panel-empty {
+      padding: 8px 14px;
+      font-size: 13px;
+      color: #ccc;
+    }
+    .viewer-panel-empty { font-style: italic; color: #888; }
 
     #offline {
       position: absolute;
@@ -174,9 +221,15 @@
   </div>
 
   <div class="menu-wrap" id="menu-wrap" style="display:none;">
-    <button class="global-menu-btn" id="chat-toggle-btn" title="Show/hide chat">
+    <button class="global-menu-btn" id="global-menu-btn" title="Menu">
       <span></span><span></span><span></span>
     </button>
+    <div class="global-menu" id="global-menu">
+      <button id="chat-toggle-btn" type="button" style="display:none;">Hide chat</button>
+      <div class="menu-separator" id="menu-separator" style="display:none;"></div>
+      <button id="viewer-count-btn" type="button">Viewer count: &mdash;</button>
+      <div class="viewer-panel" id="viewer-panel"></div>
+    </div>
   </div>
 
   <script>
@@ -385,16 +438,17 @@
       }
     });
 
-    // ---- IRC chat toggle ----
+    // ---- Global menu (chat toggle + viewer count) ----
     //
-    // Only offered when the streamer has a channel configured AND this page
-    // isn't itself sitting inside an iframe -- e.g. when this /live/<name>
-    // page is loaded as a tile inside /multistream, that page already has
-    // its own chat pane, so showing a second nested chat here would just be
-    // redundant/confusing. window.top throws instead of resolving to a
-    // different-origin ancestor for a strictly cross-origin embed; either
-    // way that means "not the top-level page", so treat it the same as
-    // being iframed.
+    // Hidden entirely when this page is sitting inside an iframe -- e.g.
+    // when this /live/<name> page is loaded as a tile inside /multistream,
+    // that page already has its own chat pane (so a second nested chat
+    // toggle here would be redundant/confusing) and its own viewers are
+    // split across whatever streams are tiled in, so a single number
+    // wouldn't mean much there either. window.top throws instead of
+    // resolving to a different-origin ancestor for a strictly cross-origin
+    // embed; either way that means "not the top-level page", so treat it
+    // the same as being iframed.
     let inIframe = true;
     try {
       inIframe = window.self !== window.top;
@@ -402,43 +456,113 @@
       inIframe = true;
     }
 
-    if (chatUrl && !inIframe) {
+    if (!inIframe) {
       const menuWrap = document.getElementById("menu-wrap");
-      const chatPane = document.getElementById("chat-pane");
-      const chatIframe = document.getElementById("chat-iframe");
+      const globalMenuBtn = document.getElementById("global-menu-btn");
       const chatToggleBtn = document.getElementById("chat-toggle-btn");
-      const storageKey = `rakuspace-chat-visible-${streamName}`;
+      const menuSeparator = document.getElementById("menu-separator");
+      const viewerCountBtn = document.getElementById("viewer-count-btn");
+      const viewerPanel = document.getElementById("viewer-panel");
 
-      let chatVisible = true; // shown by default when a channel is configured
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved !== null) chatVisible = saved === "1";
-      } catch (err) {
-        // localStorage unavailable (private browsing etc.) -- fall back to the default.
+      menuWrap.style.display = "";
+
+      globalMenuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menuWrap.classList.toggle("open");
+      });
+      document.addEventListener("click", (e) => {
+        if (menuWrap.classList.contains("open") && !menuWrap.contains(e.target)) {
+          menuWrap.classList.remove("open");
+        }
+      });
+
+      // ---- IRC chat toggle (only offered when a channel is configured) ----
+      if (chatUrl) {
+        const chatPane = document.getElementById("chat-pane");
+        const chatIframe = document.getElementById("chat-iframe");
+        const storageKey = `rakuspace-chat-visible-${streamName}`;
+
+        let chatVisible = true; // shown by default when a channel is configured
+        try {
+          const saved = localStorage.getItem(storageKey);
+          if (saved !== null) chatVisible = saved === "1";
+        } catch (err) {
+          // localStorage unavailable (private browsing etc.) -- fall back to the default.
+        }
+
+        let chatLoaded = false;
+        function applyChatVisibility() {
+          chatPane.classList.toggle("hidden", !chatVisible);
+          chatToggleBtn.textContent = chatVisible ? "Hide chat" : "Show chat";
+          if (chatVisible && !chatLoaded) {
+            chatIframe.src = chatUrl;
+            chatLoaded = true;
+          } else if (!chatVisible && chatLoaded) {
+            chatIframe.src = "about:blank";
+            chatLoaded = false;
+          }
+        }
+
+        chatToggleBtn.style.display = "";
+        menuSeparator.style.display = "";
+        applyChatVisibility();
+
+        chatToggleBtn.addEventListener("click", () => {
+          chatVisible = !chatVisible;
+          applyChatVisibility();
+          try {
+            localStorage.setItem(storageKey, chatVisible ? "1" : "0");
+          } catch (err) {
+            // ignore -- just won't persist across reloads
+          }
+        });
       }
 
-      let chatLoaded = false;
-      function applyChatVisibility() {
-        chatPane.classList.toggle("hidden", !chatVisible);
-        if (chatVisible && !chatLoaded) {
-          chatIframe.src = chatUrl;
-          chatLoaded = true;
-        } else if (!chatVisible && chatLoaded) {
-          chatIframe.src = "about:blank";
-          chatLoaded = false;
+      // ---- Viewer count ----
+      //
+      // Fed by the "viewers" SSE event pushed over the same /api/live
+      // connection already open for reconnect signalling below. The named
+      // list is only ever present in that event for a viewer who's logged
+      // in themselves -- for everyone else viewerNames stays null and the
+      // panel explains why instead of silently showing nothing.
+      let viewerCount = null;
+      let viewerNames = null;
+
+      function escapeHtml(s) {
+        return s.replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        }[c]));
+      }
+
+      function renderViewerPanel() {
+        if (viewerNames) {
+          viewerPanel.innerHTML = viewerNames.length
+            ? viewerNames.map((n) => `<div class="viewer-panel-item">${escapeHtml(n)}</div>`).join("")
+            : `<div class="viewer-panel-empty">No logged-in viewers right now</div>`;
+        } else {
+          viewerPanel.innerHTML = `<div class="viewer-panel-empty">Log in to see who else is watching</div>`;
         }
       }
 
-      menuWrap.style.display = "";
-      applyChatVisibility();
+      function updateViewerUI() {
+        viewerCountBtn.textContent = `Viewer count: ${viewerCount === null ? "—" : viewerCount}`;
+        if (viewerPanel.classList.contains("open")) renderViewerPanel();
+      }
 
-      chatToggleBtn.addEventListener("click", () => {
-        chatVisible = !chatVisible;
-        applyChatVisibility();
+      viewerCountBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        viewerPanel.classList.toggle("open");
+        if (viewerPanel.classList.contains("open")) renderViewerPanel();
+      });
+
+      liveEvents.addEventListener("viewers", (e) => {
         try {
-          localStorage.setItem(storageKey, chatVisible ? "1" : "0");
+          const data = JSON.parse(e.data);
+          viewerCount = data.count;
+          viewerNames = Array.isArray(data.viewers) ? data.viewers : null;
+          updateViewerUI();
         } catch (err) {
-          // ignore -- just won't persist across reloads
+          // malformed event -- ignore, keep showing the last good count
         }
       });
 
