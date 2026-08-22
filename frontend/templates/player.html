@@ -37,6 +37,7 @@
       height: 100%;
       overflow: hidden;
       background: #000;
+      font-family: sans-serif;
     }
     .layout {
       display: flex;
@@ -108,9 +109,9 @@
     .global-menu-btn {
       width: 36px;
       height: 36px;
-      border: none;
+      border: 1px solid var(--ctp-surface1);
       border-radius: 4px;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(24, 25, 38, 0.85);
       cursor: pointer;
       display: flex;
       flex-direction: column;
@@ -120,15 +121,18 @@
       opacity: 0;
       transition: opacity 0.25s ease;
     }
+    .global-menu-btn:hover { border-color: var(--ctp-surface2); }
     .global-menu-btn span {
       display: block;
       width: 18px;
       height: 2px;
-      background: #fff;
+      background: var(--ctp-subtext0);
     }
+    .global-menu-btn:hover span { background: var(--ctp-text); }
     .menu-wrap:hover .global-menu-btn,
     .menu-wrap.just-added .global-menu-btn,
-    .menu-wrap.open .global-menu-btn {
+    .menu-wrap.open .global-menu-btn,
+    .menu-wrap:focus-within .global-menu-btn {
       opacity: 1;
     }
 
@@ -137,10 +141,12 @@
       position: absolute;
       top: 42px;
       right: 0;
-      background: rgba(20, 20, 20, 0.95);
-      border-radius: 6px;
+      background: var(--ctp-crust);
+      border: 1px solid var(--ctp-surface1);
+      border-radius: 8px;
       overflow: hidden;
       min-width: 190px;
+      max-width: calc(100vw - 20px);
       box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
     }
     .menu-wrap.open .global-menu { display: block; }
@@ -151,32 +157,41 @@
       padding: 10px 14px;
       background: none;
       border: none;
-      color: #fff;
+      color: var(--ctp-subtext1);
+      font-family: inherit;
       font-size: 14px;
       cursor: pointer;
     }
-    .global-menu button:hover { background: rgba(255, 255, 255, 0.1); }
+    .global-menu button:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+
+    .global-menu-btn:focus-visible,
+    .global-menu button:focus-visible,
+    #offline-retry:focus-visible {
+      outline: 2px solid var(--focus-ring);
+      outline-offset: -2px;
+    }
 
     .menu-separator {
       height: 1px;
       margin: 4px 0;
-      background: rgba(255, 255, 255, 0.12);
+      background: var(--ctp-surface1);
     }
 
     .viewer-panel {
       display: none;
       max-height: 220px;
       overflow-y: auto;
-      border-top: 1px solid rgba(255, 255, 255, 0.12);
+      background: var(--ctp-mantle);
+      border-top: 1px solid var(--ctp-surface1);
     }
     .viewer-panel.open { display: block; }
     .viewer-panel-item,
     .viewer-panel-empty {
       padding: 8px 14px;
       font-size: 13px;
-      color: #ccc;
+      color: var(--ctp-subtext0);
     }
-    .viewer-panel-empty { font-style: italic; color: #888; }
+    .viewer-panel-empty { font-style: italic; color: var(--ctp-overlay1); }
 
     #offline {
       position: absolute;
@@ -242,6 +257,10 @@
       width: 22px;
       height: 22px;
     }
+
+    @media (prefers-reduced-motion: reduce) {
+      .global-menu-btn { transition: none; }
+    }
   </style>
 </head>
 <body>
@@ -266,7 +285,7 @@
   </div>
 
   <div class="menu-wrap" id="menu-wrap" style="display:none;">
-    <button class="global-menu-btn" id="global-menu-btn" title="Menu">
+    <button class="global-menu-btn" id="global-menu-btn" type="button" title="Menu" aria-label="Menu">
       <span></span><span></span><span></span>
     </button>
     <div class="global-menu" id="global-menu">
