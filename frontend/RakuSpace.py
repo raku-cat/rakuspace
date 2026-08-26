@@ -40,9 +40,9 @@ OME_LLHLS_HOST = app.config.get('OME_LLHLS_HOST') or OME_PUBLISHER_HOST
 OME_LLHLS_PORT = app.config.get('OME_LLHLS_PORT') or OME_PUBLISHER_PORT
 # Base WHIP (WebRTC-HTTP Ingestion Protocol) URL for browser-based publishing
 # via /go_live, e.g. 'https://park.raku.party:3334/rakuspace'. The route
-# appends '/<userid>_<streamkey>'. Must resolve to a host OME_PROVIDER_HOST/
-# RTMP_ALT_HOSTS accepts, since it's authorized through the same /auth/ome
-# webhook as RTMP. Leave blank to hide the Go Live page's publish controls.
+# appends '/<userid>_<streamkey>'. Its host is authorized through the same
+# /auth/ome webhook as RTMP (see WEBHOOK_TRUSTED_HOSTS below), independently
+# of RTMP_ALT_HOSTS. Leave blank to hide the Go Live page's publish controls.
 OME_WHIP_URL = app.config.get('OME_WHIP_URL', '')
 OME_RTMP_PROVIDER_PORT = app.config['OME_RTMP_PROVIDER_PORT']
 RTMP_HOST = f"rtmp://{OME_PROVIDER_HOST}:{OME_RTMP_PROVIDER_PORT}/{OME_APP_NAME}"
@@ -52,6 +52,17 @@ RTMP_URLS = [RTMP_HOST] + [
     for host in sorted(RTMP_ALT_HOSTS)
     if host != OME_PROVIDER_HOST
 ]
+
+# Hostnames the /auth/ome webhook accepts on incoming publish attempts: every
+# host actually used to ingest a stream (RTMP provider + alts, plus WHIP if
+# configured), not just RTMP_ALT_HOSTS. Keeps RTMP_ALT_HOSTS meaning what its
+# name says -- alternate *RTMP* hosts shown to users as publish options --
+# instead of overloading it as a catch-all trust list for unrelated protocols.
+WEBHOOK_TRUSTED_HOSTS = {OME_PROVIDER_HOST, *RTMP_ALT_HOSTS}
+if OME_WHIP_URL:
+    whip_host = urlparse(OME_WHIP_URL).hostname
+    if whip_host:
+        WEBHOOK_TRUSTED_HOSTS.add(whip_host)
 
 # --- Go-live notification config ---
 NOTIFY_VALIDATE_URLS = str(app.config.get('NOTIFY_VALIDATE_URLS', 'True')).lower() == 'true'
@@ -1128,10 +1139,10 @@ def verify_webhook():
     # 2. Safely extract hostname, defaulting to empty string if None
     hostname = parsed_uri.hostname or ""
 
-    if hostname != OME_PROVIDER_HOST and hostname not in RTMP_ALT_HOSTS:
+    if hostname not in WEBHOOK_TRUSTED_HOSTS:
         log.info(
-            "verify_webhook: denying, hostname %r not in allowlist (OME_PROVIDER_HOST=%r RTMP_ALT_HOSTS=%r)",
-            hostname, OME_PROVIDER_HOST, RTMP_ALT_HOSTS,
+            "verify_webhook: denying, hostname %r not in allowlist (WEBHOOK_TRUSTED_HOSTS=%r)",
+            hostname, WEBHOOK_TRUSTED_HOSTS,
         )
         return deny
 

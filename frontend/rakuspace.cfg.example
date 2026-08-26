@@ -5,9 +5,12 @@ SECRET_KEY = 'change-me'
 # Host of your RTMP provider (where users will be streaming to).
 OME_PROVIDER_HOST = 'localhost'
 OME_RTMP_PROVIDER_PORT = '1935'
-# Additional hostnames that should be accepted as equivalent to
-# OME_PROVIDER_HOST in the AdmissionWebhook (e.g. an internal/docker
-# hostname alongside the public one). List of strings, can be empty.
+# Additional RTMP hostnames equivalent to OME_PROVIDER_HOST -- shown to users
+# as alternate publish URLs on /stream_info and accepted by the
+# AdmissionWebhook (e.g. an internal/docker hostname alongside the public
+# one). List of strings, can be empty. Other ingest protocols (e.g. WHIP,
+# below) are trusted by the webhook independently and don't need to be
+# listed here.
 RTMP_ALT_HOSTS = []
 # App name as configured in OME
 OME_APP_NAME = 'app'
@@ -24,9 +27,9 @@ OME_PUBLISHER_PORT = '3334'
 
 # Base WHIP (WebRTC-HTTP Ingestion Protocol) ingest URL, used by the
 # in-browser "Go Live!" screenshare page (/go_live) to publish directly from
-# the browser instead of an external RTMP client. Must be https:// and its
-# host must be OME_PROVIDER_HOST (or one of RTMP_ALT_HOSTS), since it's
-# authorized through the same AdmissionWebhook as RTMP. The app appends
+# the browser instead of an external RTMP client. Must be https://. Its host
+# is authorized through the same AdmissionWebhook as RTMP, independently of
+# RTMP_ALT_HOSTS -- no need to also list it there. The app appends
 # '/<userid>_<streamkey>' itself. Leave blank to hide the Go Live page's
 # publish controls (e.g. 'https://park.raku.party:3334/rakuspace').
 OME_WHIP_URL = ''
