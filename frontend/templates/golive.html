@@ -91,6 +91,21 @@
     let whipResourceUrl = null;
     let live = false;
 
+    // Encode-cost ladder for the screenshare's video codec, most preferred
+    // first. H264 favors hardware encoders on most browsers/OSes (cheaper
+    // than VP8's software encode) and matches what our OBS/RTMP users already
+    // stream in; VP8 is the universally-supported fallback. Video isn't
+    // transcoded server-side (OutputProfile is Bypass), so whichever codec
+    // wins here is what every viewer's browser has to decode.
+    const CODEC_PRIORITY = ["video/h264", "video/vp8"];
+
+    let reconnectTimer = null;
+    let reconnectAttempt = 0;
+    let disconnectGraceTimer = null;
+    const RECONNECT_BASE_DELAY_MS = 2000;
+    const RECONNECT_MAX_DELAY_MS = 10000;
+    const DISCONNECT_GRACE_MS = 5000;
+
     function setStatus(text, cls) {
       status.textContent = text || "";
       status.className = cls || "";
@@ -120,26 +135,7 @@
 
       setStatus("Connecting to stream server…");
       try {
-        pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVER }] });
-        mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
-
-        const offer = await pc.createOffer();
-        await pc.setLocalDescription(offer);
-        await waitForIceGathering(pc);
-
-        const res = await fetch(whipUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/sdp" },
-          body: pc.localDescription.sdp,
-        });
-        if (!res.ok) throw new Error(describePublishError(res.status));
-
-        const answerSdp = await res.text();
-        await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
-        const location = res.headers.get("Location");
-        whipResourceUrl = location ? new URL(location, whipUrl).toString() : null;
-
+        await connectWhip();
         live = true;
         castBtn.textContent = "Stop stream";
         castBtn.classList.remove("btn-primary");
@@ -151,6 +147,102 @@
       } finally {
         castBtn.disabled = false;
       }
+    }
+
+    // Does the actual WHIP offer/answer exchange against the existing
+    // mediaStream tracks. Used both for the initial publish and for each
+    // reconnect attempt after the connection drops.
+    async function connectWhip() {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVER }] });
+      pc.onconnectionstatechange = handleConnectionStateChange;
+      mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
+      applyCodecPreferences(pc);
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitForIceGathering(pc);
+
+      const res = await fetch(whipUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/sdp" },
+        body: pc.localDescription.sdp,
+      });
+      if (!res.ok) throw new Error(describePublishError(res.status));
+
+      const answerSdp = await res.text();
+      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+
+      const location = res.headers.get("Location");
+      whipResourceUrl = location ? new URL(location, whipUrl).toString() : null;
+    }
+
+    // Reorders (never drops) the browser's available video codecs so the
+    // cheapest-to-encode option we actually support wins the WHIP offer
+    // negotiation, falling back automatically if a browser lacks it.
+    function applyCodecPreferences(peerConnection) {
+      if (typeof RTCRtpSender === "undefined" || !RTCRtpSender.getCapabilities) return;
+      const transceiver = peerConnection.getTransceivers().find(
+        t => t.sender && t.sender.track && t.sender.track.kind === "video"
+      );
+      if (!transceiver || typeof transceiver.setCodecPreferences !== "function") return;
+
+      const capabilities = RTCRtpSender.getCapabilities("video");
+      if (!capabilities) return;
+
+      const rank = codec => {
+        const i = CODEC_PRIORITY.indexOf(codec.mimeType.toLowerCase());
+        return i === -1 ? CODEC_PRIORITY.length : i;
+      };
+      const ordered = [...capabilities.codecs].sort((a, b) => rank(a) - rank(b));
+      transceiver.setCodecPreferences(ordered);
+    }
+
+    // WebRTC's own disconnect handling is what gives WHIP a much clunkier
+    // reconnect story than RTMP: OBS notices a dropped socket and redials
+    // itself almost instantly, but a browser RTCPeerConnection just sits in
+    // "disconnected"/"failed" forever unless something actively rebuilds it.
+    // Reuses the existing mediaStream (no re-prompting for screen share) and
+    // redoes the WHIP offer/answer with backoff until it succeeds or the
+    // user stops casting.
+    function handleConnectionStateChange() {
+      if (!pc) return;
+      const state = pc.connectionState;
+      if (state === "failed") {
+        clearDisconnectGrace();
+        scheduleReconnect();
+      } else if (state === "disconnected") {
+        if (!disconnectGraceTimer) {
+          disconnectGraceTimer = setTimeout(() => {
+            disconnectGraceTimer = null;
+            if (pc && pc.connectionState === "disconnected") scheduleReconnect();
+          }, DISCONNECT_GRACE_MS);
+        }
+      } else {
+        clearDisconnectGrace();
+      }
+    }
+
+    function clearDisconnectGrace() {
+      if (disconnectGraceTimer) { clearTimeout(disconnectGraceTimer); disconnectGraceTimer = null; }
+    }
+
+    function scheduleReconnect() {
+      if (!live || reconnectTimer) return;
+      if (pc) { pc.onconnectionstatechange = null; pc.close(); pc = null; }
+      whipResourceUrl = null;
+      reconnectAttempt += 1;
+      const delay = Math.min(RECONNECT_BASE_DELAY_MS * reconnectAttempt, RECONNECT_MAX_DELAY_MS);
+      setStatus("Connection lost, reconnecting…", "error");
+      reconnectTimer = setTimeout(async () => {
+        reconnectTimer = null;
+        try {
+          await connectWhip();
+          reconnectAttempt = 0;
+          setStatus("Live!", "live");
+        } catch (err) {
+          scheduleReconnect();
+        }
+      }, delay);
     }
 
     // WHIP publish rejections are mostly deterministic HTTP status codes --
@@ -190,6 +282,9 @@
 
     async function stopCasting() {
       castBtn.disabled = true;
+      if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+      clearDisconnectGrace();
+      reconnectAttempt = 0;
       if (whipResourceUrl) {
         try { await fetch(whipResourceUrl, { method: "DELETE" }); } catch (err) { /* best-effort */ }
       }
@@ -200,7 +295,7 @@
 
     function teardown() {
       live = false;
-      if (pc) { pc.close(); pc = null; }
+      if (pc) { pc.onconnectionstatechange = null; pc.close(); pc = null; }
       if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
       whipResourceUrl = null;
       preview.srcObject = null;
