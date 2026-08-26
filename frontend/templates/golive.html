@@ -132,7 +132,7 @@
           headers: { "Content-Type": "application/sdp" },
           body: pc.localDescription.sdp,
         });
-        if (!res.ok) throw new Error(`Server rejected publish (${res.status})`);
+        if (!res.ok) throw new Error(describePublishError(res.status));
 
         const answerSdp = await res.text();
         await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
@@ -150,6 +150,26 @@
         teardown();
       } finally {
         castBtn.disabled = false;
+      }
+    }
+
+    // WHIP publish rejections are mostly deterministic HTTP status codes --
+    // map the common ones to plain-language reasons instead of surfacing the
+    // bare status to the streamer.
+    function describePublishError(status) {
+      switch (status) {
+        case 401:
+        case 403:
+          return "Not authorized to publish (check the server's stream config).";
+        case 404:
+          return "Stream endpoint not found on the server.";
+        case 409:
+          return "There's already a stream going.";
+        case 415:
+          return "Server didn't accept the stream format.";
+        default:
+          if (status >= 500) return "Streaming server error, try again shortly.";
+          return `Server rejected publish (${status}).`;
       }
     }
 
