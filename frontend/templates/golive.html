@@ -9,25 +9,35 @@
     #preview { display: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
     #preview.active { display: block; }
 
-    /* ---- Retro window (early-2000s desktop chrome), scoped to .retro-win ---- */
+    /* ---- Retro window (early-2000s comms-client chrome), scoped to .retro-win ---- */
     .retro-win {
-      --win-face: #d4d0c8;
-      --win-face-light: #fff;
-      --win-face-dark: #808080;
-      --win-face-darker: #404040;
-      --win-title-start: #0a246a;
-      --win-title-end: #a6caf0;
-      --win-title-text: #fff;
+      --win-face: #151a21;
+      --win-face-raised: #212932;
+      --win-face-light: #7c8b99;
+      --win-edge-bright: #b9d4e0;
+      --win-face-dark: #05070a;
+      --win-face-darker: #000;
+      --win-title-start: #1b2b36;
+      --win-title-end: #0a1015;
+      --win-title-text: #9fe8fb;
+      --win-accent: #6fd7e8;
       --win-inset-bg: #000;
-      --win-field-bg: #fff;
-      --win-text: #000;
+      --win-field-bg: #05070a;
+      --win-text: #dfe8ee;
+      --win-text-dim: #8ea4b2;
+      color-scheme: dark;
       max-width: 660px;
       margin: 32px auto;
       background: var(--win-face);
       color: var(--win-text);
       font-family: "Tahoma", "MS Sans Serif", "Segoe UI", sans-serif;
       font-size: 12px;
-      border: 1px solid var(--win-face-darker);
+      border: 3px solid var(--win-face-raised);
+      border-top-color: var(--win-edge-bright);
+      border-left-color: var(--win-face-light);
+      border-right-color: var(--win-face-darker);
+      border-bottom-color: var(--win-face-darker);
+      box-shadow: 0 0 0 1px rgba(111, 215, 232, 0.25), 8px 8px 0 rgba(0, 0, 0, 0.55);
     }
 
     .retro-win .bevel-out {
@@ -35,14 +45,14 @@
       border-left: 1px solid var(--win-face-light);
       border-right: 1px solid var(--win-face-darker);
       border-bottom: 1px solid var(--win-face-darker);
-      box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 var(--win-face-dark);
+      box-shadow: inset 1px 1px 0 var(--win-edge-bright), inset -1px -1px 0 var(--win-face-darker);
     }
     .retro-win .bevel-in {
       border-top: 1px solid var(--win-face-darker);
       border-left: 1px solid var(--win-face-darker);
       border-right: 1px solid var(--win-face-light);
       border-bottom: 1px solid var(--win-face-light);
-      box-shadow: inset 1px 1px 0 var(--win-face-dark), inset -1px -1px 0 #fff;
+      box-shadow: inset 1px 1px 0 var(--win-face-darker), inset -1px -1px 0 var(--win-edge-bright);
     }
 
     .retro-win .retro-titlebar {
@@ -51,10 +61,13 @@
       align-items: center;
       gap: 6px;
       padding: 0 6px;
-      background: linear-gradient(90deg, var(--win-title-start), var(--win-title-end));
+      background: linear-gradient(180deg, var(--win-title-start), var(--win-title-end));
+      border-bottom: 1px solid var(--win-accent);
       color: var(--win-title-text);
       font-weight: bold;
-      font-size: 12px;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
     }
     .retro-win .retro-titlebar .icon { color: var(--win-title-text); }
 
@@ -69,7 +82,7 @@
       align-items: center;
       justify-content: center;
     }
-    .retro-win #preview-placeholder { color: #aaa; font-size: 0.9em; }
+    .retro-win #preview-placeholder { color: var(--win-text-dim); font-size: 0.9em; }
 
     .retro-win .retro-group {
       border: none;
@@ -86,7 +99,10 @@
     }
     .retro-win .retro-group legend {
       padding: 0 4px;
-      font-size: 11px;
+      font-size: 10px;
+      color: var(--win-accent);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
     }
 
     .retro-win .retro-controls-row {
@@ -103,7 +119,7 @@
       gap: 6px;
       flex: 0 0 auto;
       padding: 6px 14px;
-      background: var(--win-face);
+      background: var(--win-face-raised);
       color: var(--win-text);
       border: none;
       border-radius: 0;
@@ -114,15 +130,15 @@
       border-left: 1px solid var(--win-face-light);
       border-right: 1px solid var(--win-face-darker);
       border-bottom: 1px solid var(--win-face-darker);
-      box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 var(--win-face-dark);
+      box-shadow: inset 1px 1px 0 var(--win-edge-bright), inset -1px -1px 0 var(--win-face-darker);
     }
-    .retro-win .retro-btn:hover { background: var(--win-face); filter: none; }
+    .retro-win .retro-btn:hover { background: #1e242c; filter: none; }
     .retro-win .retro-btn:active {
       border-top: 1px solid var(--win-face-darker);
       border-left: 1px solid var(--win-face-darker);
       border-right: 1px solid var(--win-face-light);
       border-bottom: 1px solid var(--win-face-light);
-      box-shadow: inset 1px 1px 0 var(--win-face-dark), inset -1px -1px 0 #fff;
+      box-shadow: inset 1px 1px 0 var(--win-face-darker), inset -1px -1px 0 var(--win-edge-bright);
     }
     .retro-win .retro-btn:disabled, .retro-win .retro-btn:disabled:hover {
       opacity: 0.5;
@@ -130,9 +146,9 @@
       filter: none;
     }
 
-    .retro-win #cast-btn.btn-primary { color: #006400; }
+    .retro-win #cast-btn.btn-primary { color: #7ee787; }
     .retro-win #cast-btn.btn-danger,
-    .retro-win #mic-btn.btn-danger { color: #8b0000; }
+    .retro-win #mic-btn.btn-danger { color: #ff7b72; }
 
     .retro-win .retro-select {
       background: var(--win-field-bg);
@@ -151,7 +167,7 @@
     .retro-win .retro-note {
       display: none;
       font-size: 11px;
-      color: var(--win-face-darker);
+      color: var(--win-text-dim);
       margin-top: 8px;
     }
 
@@ -160,7 +176,7 @@
     .retro-win .retro-statusbar {
       display: flex;
       flex-wrap: wrap;
-      background: var(--win-face);
+      background: var(--win-inset-bg);
       border-top: 1px solid var(--win-face-darker);
       margin: 0 10px 10px;
     }
@@ -183,11 +199,12 @@
       height: 12px;
       vertical-align: -2px;
       margin-right: 5px;
-      opacity: 0.65;
+      color: var(--win-accent);
+      opacity: 0.8;
     }
 
-    .retro-win #status.live { color: #008000; }
-    .retro-win #status.error { color: #c00000; }
+    .retro-win #status.live { color: #7ee787; }
+    .retro-win #status.error { color: #ff7b72; }
   </style>
 </head>
 <body>
