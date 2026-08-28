@@ -85,7 +85,7 @@
 
     <div class="controls-row">
       <button id="cast-btn" class="btn-primary" type="button">Start casting</button>
-      <button id="mic-btn" class="secondary" type="button" disabled>Mic</button>
+      <button id="mic-btn" class="secondary" type="button" disabled>Enable mic</button>
       <select id="mic-select" disabled>
         <option value="">Default microphone</option>
       </select>
@@ -210,13 +210,6 @@
 
       setupAudioGraph();
 
-      setStatus("Requesting microphone…");
-      try {
-        await acquireMic(micSelect.value || undefined);
-      } catch (err) {
-        setStatus("Microphone access denied – casting with desktop audio only.", "error");
-      }
-
       olk = OvenLiveKit.create({
         callbacks: {
           error: handlePublishError,
@@ -318,8 +311,12 @@
       }
     }
 
+    // Only swaps the live track if the mic has already been explicitly
+    // turned on -- picking a device beforehand just records the preference
+    // for whenever the user does enable it, it doesn't request mic access
+    // (and therefore doesn't turn the mic on) by itself.
     micSelect.addEventListener("change", async () => {
-      if (!displayStream) return;
+      if (!micTrack) return;
       try {
         await acquireMic(micSelect.value || undefined);
       } catch (err) {
@@ -327,8 +324,23 @@
       }
     });
 
-    micBtn.addEventListener("click", () => {
+    // First click requests mic access and enables it (unmuted); once a mic
+    // track exists, the button just toggles mute. A previously-granted mic
+    // permission means acquireMic() here won't prompt again, but it still
+    // only happens on an explicit click -- a reload or restarted stream
+    // never opens the mic on its own.
+    micBtn.addEventListener("click", async () => {
       if (!micGainNode) return;
+      if (!micTrack) {
+        try {
+          await acquireMic(micSelect.value || undefined);
+        } catch (err) {
+          setStatus("Microphone access denied.", "error");
+          return;
+        }
+        micBtn.textContent = "Mute mic";
+        return;
+      }
       micMuted = !micMuted;
       micGainNode.gain.value = micMuted ? 0 : 1;
       micBtn.textContent = micMuted ? "Unmute mic" : "Mute mic";
@@ -479,7 +491,7 @@
       castBtn.textContent = "Start casting";
       castBtn.classList.remove("btn-danger");
       castBtn.classList.add("btn-primary");
-      micBtn.textContent = "Mic";
+      micBtn.textContent = "Enable mic";
       micBtn.classList.remove("btn-danger");
       micBtn.disabled = true;
       micSelect.disabled = true;
