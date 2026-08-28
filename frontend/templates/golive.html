@@ -6,36 +6,35 @@
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
-    body { display: flex; flex-direction: column; }
-    header { justify-content: space-between; }
-
-    main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
-
-    .card { width: 480px; margin-bottom: 0; text-align: center; }
-    .card h1 { font-size: 1.1em; margin: 0 0 18px 0; }
+    main.golive { max-width: 760px; }
 
     #preview-wrap {
-      display: none;
-      margin-bottom: 18px;
       background: #000;
       border: 1px solid var(--ctp-surface1);
       border-radius: 6px;
       overflow: hidden;
+      margin-bottom: 16px;
+      aspect-ratio: 16 / 9;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
-    #preview {
-      display: block;
-      width: 100%;
-      max-height: 320px;
-      background: #000;
-    }
+    #preview { display: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
+    #preview.active { display: block; }
+    #preview-placeholder { color: var(--ctp-overlay1); font-size: 0.9em; }
 
-    #cast-btn {
-      width: 100%;
-      padding: 12px;
-      font-size: 1em;
+    .controls-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
     }
+    .controls-row select { width: auto; flex: 1; min-width: 160px; margin-bottom: 0; }
+    #cast-btn { flex: 0 0 auto; padding: 10px 22px; }
+    #mic-btn { flex: 0 0 auto; padding: 10px 16px; }
 
-    #status { font-size: 0.85em; height: 1.2em; margin-top: 10px; color: var(--ctp-subtext0); }
+    #status { font-size: 0.85em; margin-bottom: 14px; color: var(--ctp-subtext0); }
     #status.error { color: var(--ctp-red); }
     #status.live { color: var(--ctp-green); }
 
@@ -45,6 +44,21 @@
       color: var(--ctp-overlay1);
       margin-top: 10px;
     }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .stat-tile {
+      background: var(--ctp-mantle);
+      border: 1px solid var(--ctp-surface1);
+      border-radius: 6px;
+      padding: 10px 12px;
+    }
+    .stat-tile .stat-label { font-size: 0.72em; color: var(--ctp-subtext0); text-transform: uppercase; letter-spacing: 0.03em; }
+    .stat-tile .stat-value { font-size: 1.05em; color: var(--ctp-text); margin-top: 2px; }
   </style>
 </head>
 <body>
@@ -60,55 +74,114 @@
     <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
   </header>
 
-  <main>
-    <div class="card">
-      <h1>Screenshare control</h1>
+  <main class="golive">
+    <h1>Screenshare control</h1>
+    <p class="sub">Cast your screen straight from the browser over WHIP.</p>
 
-      <div id="preview-wrap">
-        <video id="preview" autoplay muted playsinline></video>
-      </div>
+    <div id="preview-wrap">
+      <video id="preview" autoplay muted playsinline></video>
+      <span id="preview-placeholder">No preview yet</span>
+    </div>
 
+    <div class="controls-row">
       <button id="cast-btn" class="btn-primary" type="button">Start casting</button>
-      <div id="status"></div>
-      <div id="unconfigured-note">
-        Screenshare publishing isn't configured on this server yet.
+      <button id="mic-btn" class="secondary" type="button" disabled>Mic</button>
+      <select id="mic-select" disabled>
+        <option value="">Default microphone</option>
+      </select>
+    </div>
+
+    <div id="status"></div>
+    <div id="unconfigured-note">
+      Screenshare publishing isn't configured on this server yet.
+    </div>
+
+    <div class="section-heading">Stream info</div>
+    <div class="stats-grid">
+      <div class="stat-tile">
+        <div class="stat-label">Connection</div>
+        <div class="stat-value" id="stat-connection">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Video codec</div>
+        <div class="stat-value" id="stat-video-codec">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Resolution</div>
+        <div class="stat-value" id="stat-resolution">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Frame rate</div>
+        <div class="stat-value" id="stat-fps">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Video bitrate</div>
+        <div class="stat-value" id="stat-video-bitrate">&mdash;</div>
+      </div>
+      <div class="stat-tile">
+        <div class="stat-label">Audio</div>
+        <div class="stat-value" id="stat-audio-codec">&mdash;</div>
       </div>
     </div>
   </main>
 
+  <script src="{{ url_for('static', filename='ovenlivekit/OvenLiveKit.min.js') }}"></script>
   <script>
     const whipUrl = {{ whip_url | tojson }};
-    const STUN_SERVER = "stun:stun.ovenmediaengine.com:13478";
 
     const castBtn = document.getElementById("cast-btn");
+    const micBtn = document.getElementById("mic-btn");
+    const micSelect = document.getElementById("mic-select");
     const status = document.getElementById("status");
     const previewWrap = document.getElementById("preview-wrap");
     const preview = document.getElementById("preview");
+    const previewPlaceholder = document.getElementById("preview-placeholder");
     const unconfiguredNote = document.getElementById("unconfigured-note");
 
-    let mediaStream = null;
-    let pc = null;
-    let whipResourceUrl = null;
-    let live = false;
+    const statConnection = document.getElementById("stat-connection");
+    const statVideoCodec = document.getElementById("stat-video-codec");
+    const statResolution = document.getElementById("stat-resolution");
+    const statFps = document.getElementById("stat-fps");
+    const statVideoBitrate = document.getElementById("stat-video-bitrate");
+    const statAudioCodec = document.getElementById("stat-audio-codec");
 
-    // Encode-cost ladder for the screenshare's video codec, most preferred
-    // first. H264 favors hardware encoders on most browsers/OSes (cheaper
-    // than VP8's software encode) and matches what our OBS/RTMP users already
-    // stream in; VP8 is the universally-supported fallback. Video isn't
-    // transcoded server-side (OutputProfile is Bypass), so whichever codec
-    // wins here is what every viewer's browser has to decode.
-    const CODEC_PRIORITY = ["video/h264", "video/vp8"];
+    let olk = null;
+    let displayStream = null;
+    let micTrack = null;
+    let micMuted = false;
+    let live = false;
+    let statsTimer = null;
+    let lastStatsSample = null;
+
+    // Desktop/tab audio (from getDisplayMedia) and the mic are mixed through
+    // a Web Audio graph into one steady output track, rather than swapping
+    // which raw track is attached to the peer connection. That mixed track's
+    // identity never changes across a mic mute or device switch, so those
+    // only ever rewire the graph -- no renegotiation or replaceTrack needed.
+    let audioCtx = null;
+    let destinationNode = null;
+    let displaySourceNode = null;
+    let micGainNode = null;
+    let micSourceNode = null;
 
     let reconnectTimer = null;
     let reconnectAttempt = 0;
-    let disconnectGraceTimer = null;
     const RECONNECT_BASE_DELAY_MS = 2000;
     const RECONNECT_MAX_DELAY_MS = 10000;
-    const DISCONNECT_GRACE_MS = 5000;
 
     function setStatus(text, cls) {
       status.textContent = text || "";
       status.className = cls || "";
+    }
+
+    function resetStats() {
+      lastStatsSample = null;
+      statConnection.textContent = "—";
+      statVideoCodec.textContent = "—";
+      statResolution.textContent = "—";
+      statFps.textContent = "—";
+      statVideoBitrate.textContent = "—";
+      statAudioCodec.textContent = "—";
     }
 
     if (!whipUrl) {
@@ -116,177 +189,273 @@
       unconfiguredNote.style.display = "";
     }
 
+    // Desktop/tab audio support depends entirely on what the browser's own
+    // screenshare picker offers (e.g. Chrome's "share tab audio" checkbox,
+    // absent for a plain window/screen share) -- we just ask for it and take
+    // whatever getDisplayMedia hands back. Mic is layered on top of that via
+    // the Web Audio graph below so a streamer gets both when available.
     async function startCasting() {
       castBtn.disabled = true;
       setStatus("Requesting screen…");
       try {
-        mediaStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
+        displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: true });
       } catch (err) {
         setStatus("Screen share cancelled or denied.", "error");
         castBtn.disabled = false;
         return;
       }
-
-      preview.srcObject = mediaStream;
-      previewWrap.style.display = "";
-      mediaStream.getTracks().forEach(track => {
+      displayStream.getVideoTracks().forEach(track => {
         track.addEventListener("ended", () => { if (live) stopCasting(); });
       });
 
+      setupAudioGraph();
+
+      setStatus("Requesting microphone…");
+      try {
+        await acquireMic(micSelect.value || undefined);
+      } catch (err) {
+        setStatus("Microphone access denied – casting with desktop audio only.", "error");
+      }
+
+      olk = OvenLiveKit.create({
+        callbacks: {
+          error: handlePublishError,
+          connected: handleConnected,
+          connectionClosed: handleConnectionClosed,
+          iceStateChange: handleIceStateChange,
+        },
+      });
+      olk.attachMedia(preview);
+
+      const combined = buildCombinedStream();
+      await olk.setMediaStream(combined);
+      preview.muted = true;
+      preview.classList.add("active");
+      previewPlaceholder.style.display = "none";
+
+      await populateMicDevices();
+      micBtn.disabled = false;
+      micSelect.disabled = false;
+
       setStatus("Connecting to stream server…");
       try {
-        await connectWhip();
+        await olk.startStreaming(whipUrl, { preferredVideoFormat: "H264" });
         live = true;
         castBtn.textContent = "Stop stream";
         castBtn.classList.remove("btn-primary");
         castBtn.classList.add("btn-danger");
         setStatus("Live!", "live");
+        startStatsPolling();
       } catch (err) {
-        setStatus("Failed to start stream: " + err.message, "error");
+        setStatus("Failed to start stream: " + (err && err.message ? err.message : err), "error");
         teardown();
       } finally {
         castBtn.disabled = false;
       }
     }
 
-    // Does the actual WHIP offer/answer exchange against the existing
-    // mediaStream tracks. Used both for the initial publish and for each
-    // reconnect attempt after the connection drops.
-    async function connectWhip() {
-      pc = new RTCPeerConnection({ iceServers: [{ urls: STUN_SERVER }] });
-      pc.onconnectionstatechange = handleConnectionStateChange;
-      mediaStream.getTracks().forEach(track => pc.addTrack(track, mediaStream));
-      applyCodecPreferences(pc);
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      await waitForIceGathering(pc);
-
-      const res = await fetch(whipUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/sdp" },
-        body: pc.localDescription.sdp,
-      });
-      if (!res.ok) throw new Error(describePublishError(res.status));
-
-      const answerSdp = await res.text();
-      await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
-
-      const location = res.headers.get("Location");
-      whipResourceUrl = location ? new URL(location, whipUrl).toString() : null;
+    function buildCombinedStream() {
+      return new MediaStream([
+        ...displayStream.getVideoTracks(),
+        ...destinationNode.stream.getAudioTracks(),
+      ]);
     }
 
-    // Reorders (never drops) the browser's available video codecs so the
-    // cheapest-to-encode option we actually support wins the WHIP offer
-    // negotiation, falling back automatically if a browser lacks it.
-    function applyCodecPreferences(peerConnection) {
-      if (typeof RTCRtpSender === "undefined" || !RTCRtpSender.getCapabilities) return;
-      const transceiver = peerConnection.getTransceivers().find(
-        t => t.sender && t.sender.track && t.sender.track.kind === "video"
-      );
-      if (!transceiver || typeof transceiver.setCodecPreferences !== "function") return;
+    // Sets up the mix destination and wires in desktop/tab audio, if the
+    // browser gave us any. The mic side is wired in separately by
+    // acquireMic() once mic permission is granted (or re-wired on device
+    // switch), independent of whether display audio is present.
+    function setupAudioGraph() {
+      audioCtx = new AudioContext();
+      destinationNode = audioCtx.createMediaStreamDestination();
 
-      const capabilities = RTCRtpSender.getCapabilities("video");
-      if (!capabilities) return;
+      const displayAudioTrack = displayStream.getAudioTracks()[0];
+      if (displayAudioTrack) {
+        displaySourceNode = audioCtx.createMediaStreamSource(new MediaStream([displayAudioTrack]));
+        displaySourceNode.connect(destinationNode);
+        displayAudioTrack.addEventListener("ended", () => {
+          if (displaySourceNode) { displaySourceNode.disconnect(); displaySourceNode = null; }
+        });
+      }
 
-      const rank = codec => {
-        const i = CODEC_PRIORITY.indexOf(codec.mimeType.toLowerCase());
-        return i === -1 ? CODEC_PRIORITY.length : i;
-      };
-      const ordered = [...capabilities.codecs].sort((a, b) => rank(a) - rank(b));
-      transceiver.setCodecPreferences(ordered);
+      micGainNode = audioCtx.createGain();
+      micGainNode.gain.value = micMuted ? 0 : 1;
+      micGainNode.connect(destinationNode);
     }
 
-    // WebRTC's own disconnect handling is what gives WHIP a much clunkier
-    // reconnect story than RTMP: OBS notices a dropped socket and redials
-    // itself almost instantly, but a browser RTCPeerConnection just sits in
-    // "disconnected"/"failed" forever unless something actively rebuilds it.
-    // Reuses the existing mediaStream (no re-prompting for screen share) and
-    // redoes the WHIP offer/answer with backoff until it succeeds or the
-    // user stops casting.
-    function handleConnectionStateChange() {
-      if (!pc) return;
-      const state = pc.connectionState;
-      if (state === "failed") {
-        clearDisconnectGrace();
-        scheduleReconnect();
-      } else if (state === "disconnected") {
-        if (!disconnectGraceTimer) {
-          disconnectGraceTimer = setTimeout(() => {
-            disconnectGraceTimer = null;
-            if (pc && pc.connectionState === "disconnected") scheduleReconnect();
-          }, DISCONNECT_GRACE_MS);
-        }
-      } else {
-        clearDisconnectGrace();
+    async function acquireMic(deviceId) {
+      const constraints = { audio: deviceId ? { deviceId: { exact: deviceId } } : true };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      const newTrack = stream.getAudioTracks()[0];
+
+      if (micSourceNode) micSourceNode.disconnect();
+      if (micTrack) micTrack.stop();
+
+      micTrack = newTrack;
+      micSourceNode = audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
+      micSourceNode.connect(micGainNode);
+    }
+
+    async function populateMicDevices() {
+      try {
+        const devices = await OvenLiveKit.getDevices("audio");
+        const inputs = (devices && devices.audioinput) || [];
+        const current = micSelect.value;
+        micSelect.innerHTML = "";
+        const defaultOpt = document.createElement("option");
+        defaultOpt.value = "";
+        defaultOpt.textContent = "Default microphone";
+        micSelect.appendChild(defaultOpt);
+        inputs.forEach(dev => {
+          const opt = document.createElement("option");
+          opt.value = dev.deviceId;
+          opt.textContent = dev.label || "Microphone";
+          micSelect.appendChild(opt);
+        });
+        if (current) micSelect.value = current;
+      } catch (err) {
+        // Device labels/enumeration failed; keep the default-only option.
       }
     }
 
-    function clearDisconnectGrace() {
-      if (disconnectGraceTimer) { clearTimeout(disconnectGraceTimer); disconnectGraceTimer = null; }
+    micSelect.addEventListener("change", async () => {
+      if (!displayStream) return;
+      try {
+        await acquireMic(micSelect.value || undefined);
+      } catch (err) {
+        setStatus("Couldn't switch microphone: " + (err && err.message ? err.message : err), "error");
+      }
+    });
+
+    micBtn.addEventListener("click", () => {
+      if (!micGainNode) return;
+      micMuted = !micMuted;
+      micGainNode.gain.value = micMuted ? 0 : 1;
+      micBtn.textContent = micMuted ? "Unmute mic" : "Mute mic";
+      micBtn.classList.toggle("btn-danger", micMuted);
+    });
+
+    function handlePublishError(err) {
+      if (!live) return;
+      setStatus("Stream error: " + (err && err.message ? err.message : "connection problem"), "error");
+      scheduleReconnect();
     }
 
+    function handleConnected() {
+      reconnectAttempt = 0;
+      setStatus("Live!", "live");
+    }
+
+    function handleConnectionClosed(type, event) {
+      if (!live || type === "user") return;
+      scheduleReconnect();
+    }
+
+    function handleIceStateChange(state) {
+      statConnection.textContent = state;
+      if (!live) return;
+      if (state === "failed" || state === "disconnected" || state === "closed") {
+        scheduleReconnect();
+      }
+    }
+
+    // WebRTC's own disconnect handling is what gives WHIP a much clunkier
+    // reconnect story than RTMP: a browser RTCPeerConnection just sits in a
+    // dead state forever unless something actively rebuilds it. Reuses the
+    // existing captured tracks (no re-prompting for screen share) and redoes
+    // the WHIP publish with backoff until it succeeds or the user stops.
     function scheduleReconnect() {
       if (!live || reconnectTimer) return;
-      if (pc) { pc.onconnectionstatechange = null; pc.close(); pc = null; }
-      whipResourceUrl = null;
+      stopStatsPolling();
       reconnectAttempt += 1;
       const delay = Math.min(RECONNECT_BASE_DELAY_MS * reconnectAttempt, RECONNECT_MAX_DELAY_MS);
       setStatus("Connection lost, reconnecting…", "error");
       reconnectTimer = setTimeout(async () => {
         reconnectTimer = null;
         try {
-          await connectWhip();
-          reconnectAttempt = 0;
+          if (olk) { try { await olk.stopStreaming(); } catch (e) { /* best-effort */ } }
+          await olk.setMediaStream(buildCombinedStream());
+          await olk.startStreaming(whipUrl, { preferredVideoFormat: "H264" });
           setStatus("Live!", "live");
+          startStatsPolling();
         } catch (err) {
           scheduleReconnect();
         }
       }, delay);
     }
 
-    // WHIP publish rejections are mostly deterministic HTTP status codes --
-    // map the common ones to plain-language reasons instead of surfacing the
-    // bare status to the streamer.
-    function describePublishError(status) {
-      switch (status) {
-        case 401:
-        case 403:
-          return "Not authorized to publish (check the server's stream config).";
-        case 404:
-          return "Stream endpoint not found on the server.";
-        case 409:
-          return "There's already a stream going.";
-        case 415:
-          return "Server didn't accept the stream format.";
-        default:
-          if (status >= 500) return "Streaming server error, try again shortly.";
-          return `Server rejected publish (${status}).`;
-      }
+    function startStatsPolling() {
+      stopStatsPolling();
+      statsTimer = setInterval(pollStats, 2000);
+      pollStats();
     }
 
-    function waitForIceGathering(peerConnection) {
-      if (peerConnection.iceGatheringState === "complete") return Promise.resolve();
-      return new Promise(resolve => {
-        function check() {
-          if (peerConnection.iceGatheringState === "complete") {
-            peerConnection.removeEventListener("icegatheringstatechange", check);
-            resolve();
+    function stopStatsPolling() {
+      if (statsTimer) { clearInterval(statsTimer); statsTimer = null; }
+    }
+
+    async function pollStats() {
+      if (!olk || !olk.peerConnection) return;
+      let report;
+      try {
+        report = await olk.peerConnection.getStats();
+      } catch (err) {
+        return;
+      }
+
+      const codecs = new Map();
+      let outboundVideo = null;
+      let outboundAudio = null;
+      report.forEach(entry => {
+        if (entry.type === "codec") codecs.set(entry.id, entry);
+        if (entry.type === "outbound-rtp" && entry.kind === "video") outboundVideo = entry;
+        if (entry.type === "outbound-rtp" && entry.kind === "audio") outboundAudio = entry;
+      });
+
+      const now = performance.now();
+      if (outboundVideo) {
+        const codec = codecs.get(outboundVideo.codecId);
+        statVideoCodec.textContent = codec ? codec.mimeType.replace("video/", "") : "—";
+        if (outboundVideo.frameWidth && outboundVideo.frameHeight) {
+          statResolution.textContent = `${outboundVideo.frameWidth}×${outboundVideo.frameHeight}`;
+        }
+        if (outboundVideo.framesPerSecond) {
+          statFps.textContent = Math.round(outboundVideo.framesPerSecond) + " fps";
+        }
+
+        if (lastStatsSample && lastStatsSample.videoBytes !== undefined) {
+          const dt = (now - lastStatsSample.time) / 1000;
+          const dBytes = outboundVideo.bytesSent - lastStatsSample.videoBytes;
+          if (dt > 0) {
+            const kbps = Math.max(0, Math.round((dBytes * 8) / dt / 1000));
+            statVideoBitrate.textContent = kbps + " kbps";
           }
         }
-        peerConnection.addEventListener("icegatheringstatechange", check);
-        // Don't hang forever waiting for every candidate.
-        setTimeout(resolve, 3000);
-      });
+      }
+
+      if (outboundAudio) {
+        const codec = codecs.get(outboundAudio.codecId);
+        statAudioCodec.textContent = codec ? codec.mimeType.replace("audio/", "") : "—";
+      } else {
+        statAudioCodec.textContent = "none";
+      }
+
+      lastStatsSample = {
+        time: now,
+        videoBytes: outboundVideo ? outboundVideo.bytesSent : undefined,
+      };
     }
 
+    // WHIP publish rejections are mostly deterministic HTTP status codes --
+    // OvenLiveKit surfaces the raw fetch failure, so we don't get the status
+    // code directly, but the message text carries enough for the user.
     async function stopCasting() {
       castBtn.disabled = true;
       if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-      clearDisconnectGrace();
       reconnectAttempt = 0;
-      if (whipResourceUrl) {
-        try { await fetch(whipResourceUrl, { method: "DELETE" }); } catch (err) { /* best-effort */ }
+      stopStatsPolling();
+      if (olk) {
+        try { await olk.stopStreaming(); } catch (err) { /* best-effort */ }
       }
       teardown();
       setStatus("");
@@ -295,14 +464,26 @@
 
     function teardown() {
       live = false;
-      if (pc) { pc.onconnectionstatechange = null; pc.close(); pc = null; }
-      if (mediaStream) { mediaStream.getTracks().forEach(track => track.stop()); mediaStream = null; }
-      whipResourceUrl = null;
+      if (olk) { olk.remove(); olk = null; }
+      if (displayStream) { displayStream.getTracks().forEach(track => track.stop()); displayStream = null; }
+      if (micTrack) { micTrack.stop(); micTrack = null; }
+      if (micSourceNode) { micSourceNode.disconnect(); micSourceNode = null; }
+      if (displaySourceNode) { displaySourceNode.disconnect(); displaySourceNode = null; }
+      if (micGainNode) { micGainNode.disconnect(); micGainNode = null; }
+      destinationNode = null;
+      if (audioCtx) { audioCtx.close(); audioCtx = null; }
+      micMuted = false;
       preview.srcObject = null;
-      previewWrap.style.display = "none";
+      preview.classList.remove("active");
+      previewPlaceholder.style.display = "";
       castBtn.textContent = "Start casting";
       castBtn.classList.remove("btn-danger");
       castBtn.classList.add("btn-primary");
+      micBtn.textContent = "Mic";
+      micBtn.classList.remove("btn-danger");
+      micBtn.disabled = true;
+      micSelect.disabled = true;
+      resetStats();
     }
 
     castBtn.addEventListener("click", () => {
