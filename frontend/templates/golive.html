@@ -26,8 +26,9 @@
       --win-text: #dfe8ee;
       --win-text-dim: #8ea4b2;
       color-scheme: dark;
+      width: 100%;
       max-width: 660px;
-      margin: 32px auto;
+      margin: 0 auto;
       background: var(--win-face);
       color: var(--win-text);
       font-family: "Tahoma", "MS Sans Serif", "Segoe UI", sans-serif;
@@ -220,7 +221,7 @@
     <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
   </header>
 
-  <main class="golive">
+  <main class="golive centered">
     <div class="retro-win">
       <svg style="display:none">
         <symbol id="icon-broadcast" viewBox="0 0 24 24">
