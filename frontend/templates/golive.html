@@ -11,20 +11,20 @@
 
     /* ---- Retro window (early-2000s comms-client chrome), scoped to .retro-win ---- */
     .retro-win {
-      --win-face: #151a21;
-      --win-face-raised: #212932;
-      --win-face-light: #7c8b99;
-      --win-edge-bright: #b9d4e0;
-      --win-face-dark: #05070a;
+      --win-face: #17141d;
+      --win-face-raised: #262231;
+      --win-face-light: #8b7f9c;
+      --win-edge-bright: #cfc0e2;
+      --win-face-dark: #07050a;
       --win-face-darker: #000;
-      --win-title-start: #1b2b36;
-      --win-title-end: #0a1015;
-      --win-title-text: #9fe8fb;
-      --win-accent: #6fd7e8;
+      --win-title-start: #2a1f3a;
+      --win-title-end: #100b18;
+      --win-title-text: #d9b8ff;
+      --win-accent: #b57ce8;
       --win-inset-bg: #000;
-      --win-field-bg: #05070a;
-      --win-text: #dfe8ee;
-      --win-text-dim: #8ea4b2;
+      --win-field-bg: #07050c;
+      --win-text: #e7e2ee;
+      --win-text-dim: #a496b4;
       color-scheme: dark;
       width: 100%;
       max-width: 660px;
@@ -38,7 +38,9 @@
       border-left-color: var(--win-face-light);
       border-right-color: var(--win-face-darker);
       border-bottom-color: var(--win-face-darker);
-      box-shadow: 0 0 0 1px rgba(111, 215, 232, 0.25), 8px 8px 0 rgba(0, 0, 0, 0.55);
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 0 0 1px rgba(181, 124, 232, 0.30), 8px 8px 0 rgba(0, 0, 0, 0.55);
     }
 
     .retro-win .bevel-out {
@@ -76,6 +78,7 @@
 
     .retro-win .retro-preview {
       background: var(--win-inset-bg);
+      border-radius: 6px;
       overflow: hidden;
       margin-bottom: 12px;
       aspect-ratio: 16 / 9;
@@ -89,6 +92,7 @@
       border: none;
       padding: 8px 10px 10px;
       margin: 0 0 12px;
+      border-radius: 8px;
       background: var(--win-face);
     }
     .retro-win .retro-group.bevel-out {
@@ -119,11 +123,11 @@
       align-items: center;
       gap: 6px;
       flex: 0 0 auto;
-      padding: 6px 14px;
-      background: var(--win-face-raised);
+      padding: 6px 15px;
+      background: linear-gradient(180deg, #37304a 0%, #2a2436 48%, #1c1826 52%, #221d2d 100%);
       color: var(--win-text);
       border: none;
-      border-radius: 0;
+      border-radius: 9px;
       font-family: inherit;
       font-size: 12px;
       cursor: pointer;
@@ -133,13 +137,17 @@
       border-bottom: 1px solid var(--win-face-darker);
       box-shadow: inset 1px 1px 0 var(--win-edge-bright), inset -1px -1px 0 var(--win-face-darker);
     }
-    .retro-win .retro-btn:hover { background: #1e242c; filter: none; }
+    .retro-win .retro-btn:hover {
+      background: linear-gradient(180deg, #443b5c 0%, #332c44 48%, #231e2f 52%, #2a2436 100%);
+      filter: none;
+    }
     .retro-win .retro-btn:active {
       border-top: 1px solid var(--win-face-darker);
       border-left: 1px solid var(--win-face-darker);
       border-right: 1px solid var(--win-face-light);
       border-bottom: 1px solid var(--win-face-light);
-      box-shadow: inset 1px 1px 0 var(--win-face-darker), inset -1px -1px 0 var(--win-edge-bright);
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.75);
+      background: linear-gradient(180deg, #1b1725 0%, #262031 100%);
     }
     .retro-win .retro-btn:disabled, .retro-win .retro-btn:disabled:hover {
       opacity: 0.5;
@@ -154,7 +162,7 @@
     .retro-win .retro-select {
       background: var(--win-field-bg);
       color: var(--win-text);
-      border-radius: 0;
+      border-radius: 7px;
       border-top: 1px solid var(--win-face-darker);
       border-left: 1px solid var(--win-face-darker);
       border-right: 1px solid var(--win-face-light);
@@ -177,9 +185,11 @@
     .retro-win .retro-statusbar {
       display: flex;
       flex-wrap: wrap;
-      background: var(--win-inset-bg);
+      background: linear-gradient(180deg, #1d1926, #0d0a13);
       border-top: 1px solid var(--win-face-darker);
-      margin: 0 10px 10px;
+      box-shadow: inset 0 1px 0 var(--win-face-light);
+      margin: 0;
+      padding: 0 4px;
     }
     .retro-win .retro-statuscell {
       flex: 1 1 0;
@@ -294,7 +304,7 @@
         </fieldset>
       </div>
 
-      <div class="retro-statusbar bevel-in">
+      <div class="retro-statusbar">
         <div class="retro-statuscell retro-statuscell-status"><span id="status">Ready.</span></div>
         <div class="retro-statuscell" title="Video codec">
           <svg class="icon stat-icon"><use href="#icon-film"></use></svg><span id="stat-video-codec">&mdash;</span>
