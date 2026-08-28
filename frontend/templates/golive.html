@@ -58,16 +58,6 @@
     }
     .retro-win .retro-titlebar .icon { color: var(--win-title-text); }
 
-    .retro-win .retro-menustrip {
-      display: flex;
-      gap: 14px;
-      padding: 2px 8px;
-      background: var(--win-face);
-      border-bottom: 1px solid var(--win-face-dark);
-      font-size: 11px;
-      color: var(--win-text);
-    }
-
     .retro-win .retro-body { padding: 10px; }
 
     .retro-win .retro-preview {
@@ -188,7 +178,13 @@
     .retro-win .retro-statuscell:first-child { border-left: none; }
     .retro-win .retro-statuscell:last-child { border-right: none; }
     .retro-win .retro-statuscell-status { flex: 2 1 0; min-width: 130px; }
-    .retro-win .retro-stat-label { color: var(--win-face-darker); opacity: 0.7; margin-right: 4px; }
+    .retro-win .stat-icon {
+      width: 12px;
+      height: 12px;
+      vertical-align: -2px;
+      margin-right: 5px;
+      opacity: 0.65;
+    }
 
     .retro-win #status.live { color: #008000; }
     .retro-win #status.error { color: #c00000; }
@@ -234,6 +230,14 @@
           <path d="M8 21h8" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
           <path d="M4 4l16 16" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
         </symbol>
+        <symbol id="icon-film" viewBox="0 0 24 24">
+          <rect x="3" y="5" width="18" height="14" rx="1" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M3 10h18M3 14h18M8 5v14M16 5v14" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round"/>
+        </symbol>
+        <symbol id="icon-speaker" viewBox="0 0 24 24">
+          <path d="M4 9h4l5-4v14l-5-4H4z" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M17 9c1.3 1.3 1.3 4.7 0 6" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round"/>
+        </symbol>
         <symbol id="icon-monitor" viewBox="0 0 24 24">
           <rect x="3" y="4" width="18" height="12" rx="1" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linejoin="round"/>
           <path d="M9 20h6" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round"/>
@@ -245,12 +249,6 @@
         <svg class="icon"><use href="#icon-monitor"></use></svg>
         <span>Screenshare Control</span>
       </div>
-      <div class="retro-menustrip">
-        <span>Session</span>
-        <span>View</span>
-        <span>Help</span>
-      </div>
-
       <div class="retro-body">
         <div id="preview-wrap" class="retro-preview bevel-in">
           <video id="preview" autoplay muted playsinline></video>
@@ -280,12 +278,15 @@
 
       <div class="retro-statusbar bevel-in">
         <div class="retro-statuscell retro-statuscell-status"><span id="status">Ready.</span></div>
-        <div class="retro-statuscell"><span class="retro-stat-label">Conn</span><span id="stat-connection">&mdash;</span></div>
-        <div class="retro-statuscell"><span class="retro-stat-label">Vid</span><span id="stat-video-codec">&mdash;</span></div>
-        <div class="retro-statuscell"><span class="retro-stat-label">Res</span><span id="stat-resolution">&mdash;</span></div>
-        <div class="retro-statuscell"><span class="retro-stat-label">FPS</span><span id="stat-fps">&mdash;</span></div>
-        <div class="retro-statuscell"><span class="retro-stat-label">Kbps</span><span id="stat-video-bitrate">&mdash;</span></div>
-        <div class="retro-statuscell"><span class="retro-stat-label">Aud</span><span id="stat-audio-codec">&mdash;</span></div>
+        <div class="retro-statuscell" title="Video codec">
+          <svg class="icon stat-icon"><use href="#icon-film"></use></svg><span id="stat-video-codec">&mdash;</span>
+        </div>
+        <div class="retro-statuscell" title="Resolution"><span id="stat-resolution">&mdash;</span></div>
+        <div class="retro-statuscell" title="Frame rate"><span id="stat-fps">&mdash;</span></div>
+        <div class="retro-statuscell" title="Video bitrate"><span id="stat-video-bitrate">&mdash;</span></div>
+        <div class="retro-statuscell" title="Audio codec">
+          <svg class="icon stat-icon"><use href="#icon-speaker"></use></svg><span id="stat-audio-codec">&mdash;</span>
+        </div>
       </div>
     </div>
   </main>
@@ -307,7 +308,6 @@
     const castIcon = castBtn.querySelector("use");
     const micIcon = micBtn.querySelector("use");
 
-    const statConnection = document.getElementById("stat-connection");
     const statVideoCodec = document.getElementById("stat-video-codec");
     const statResolution = document.getElementById("stat-resolution");
     const statFps = document.getElementById("stat-fps");
@@ -345,7 +345,6 @@
 
     function resetStats() {
       lastStatsSample = null;
-      statConnection.textContent = "—";
       statVideoCodec.textContent = "—";
       statResolution.textContent = "—";
       statFps.textContent = "—";
@@ -536,7 +535,6 @@
     }
 
     function handleIceStateChange(state) {
-      statConnection.textContent = state;
       if (!live) return;
       if (state === "failed" || state === "disconnected" || state === "closed") {
         scheduleReconnect();
