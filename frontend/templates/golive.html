@@ -204,7 +204,38 @@
     }
     .retro-win .retro-statuscell:first-child { border-left: none; }
     .retro-win .retro-statuscell:last-child { border-right: none; }
-    .retro-win .retro-statuscell-status { flex: 2 1 0; min-width: 130px; }
+    .retro-win .retro-statuscell-status {
+      flex: 2 1 0;
+      min-width: 130px;
+      position: relative;
+      overflow: visible; /* so the tooltip can escape the cell */
+    }
+    /* truncation moves onto the span, since the cell no longer clips */
+    .retro-win .retro-statuscell-status #status {
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .retro-win .retro-statuscell-status[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 6px);
+      left: 0;
+      z-index: 5;
+      width: max-content;
+      max-width: 380px;
+      white-space: normal;
+      padding: 5px 8px;
+      background: var(--win-face-raised);
+      color: var(--win-text);
+      border: 1px solid var(--win-accent);
+      border-radius: 6px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+      font-size: 11px;
+      line-height: 1.35;
+      pointer-events: none;
+    }
     .retro-win .stat-icon {
       width: 12px;
       height: 12px;
@@ -327,6 +358,7 @@
     const micBtn = document.getElementById("mic-btn");
     const micSelect = document.getElementById("mic-select");
     const status = document.getElementById("status");
+    const statusCell = status.parentElement;
     const previewWrap = document.getElementById("preview-wrap");
     const preview = document.getElementById("preview");
     const previewPlaceholder = document.getElementById("preview-placeholder");
@@ -369,6 +401,12 @@
     function setStatus(text, cls) {
       status.textContent = text || "";
       status.className = cls || "";
+      // The cell truncates, so hang the full text off the parent as a hover tooltip.
+      if (text) {
+        statusCell.setAttribute("data-tip", text);
+      } else {
+        statusCell.removeAttribute("data-tip");
+      }
     }
 
     function resetStats() {
