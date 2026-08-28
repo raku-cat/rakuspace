@@ -6,59 +6,192 @@
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
-    main.golive { max-width: 760px; }
+    #preview { display: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
+    #preview.active { display: block; }
 
-    #preview-wrap {
-      background: #000;
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 6px;
+    /* ---- Retro window (early-2000s desktop chrome), scoped to .retro-win ---- */
+    .retro-win {
+      --win-face: #d4d0c8;
+      --win-face-light: #fff;
+      --win-face-dark: #808080;
+      --win-face-darker: #404040;
+      --win-title-start: #0a246a;
+      --win-title-end: #a6caf0;
+      --win-title-text: #fff;
+      --win-inset-bg: #000;
+      --win-field-bg: #fff;
+      --win-text: #000;
+      max-width: 660px;
+      margin: 32px auto;
+      background: var(--win-face);
+      color: var(--win-text);
+      font-family: "Tahoma", "MS Sans Serif", "Segoe UI", sans-serif;
+      font-size: 12px;
+      border: 1px solid var(--win-face-darker);
+    }
+
+    .retro-win .bevel-out {
+      border-top: 1px solid var(--win-face-light);
+      border-left: 1px solid var(--win-face-light);
+      border-right: 1px solid var(--win-face-darker);
+      border-bottom: 1px solid var(--win-face-darker);
+      box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 var(--win-face-dark);
+    }
+    .retro-win .bevel-in {
+      border-top: 1px solid var(--win-face-darker);
+      border-left: 1px solid var(--win-face-darker);
+      border-right: 1px solid var(--win-face-light);
+      border-bottom: 1px solid var(--win-face-light);
+      box-shadow: inset 1px 1px 0 var(--win-face-dark), inset -1px -1px 0 #fff;
+    }
+
+    .retro-win .retro-titlebar {
+      height: 22px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 6px;
+      background: linear-gradient(90deg, var(--win-title-start), var(--win-title-end));
+      color: var(--win-title-text);
+      font-weight: bold;
+      font-size: 12px;
+    }
+    .retro-win .retro-titlebar .icon { color: var(--win-title-text); }
+
+    .retro-win .retro-menustrip {
+      display: flex;
+      gap: 14px;
+      padding: 2px 8px;
+      background: var(--win-face);
+      border-bottom: 1px solid var(--win-face-dark);
+      font-size: 11px;
+      color: var(--win-text);
+    }
+
+    .retro-win .retro-body { padding: 10px; }
+
+    .retro-win .retro-preview {
+      background: var(--win-inset-bg);
       overflow: hidden;
-      margin-bottom: 16px;
+      margin-bottom: 12px;
       aspect-ratio: 16 / 9;
       display: flex;
       align-items: center;
       justify-content: center;
     }
-    #preview { display: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
-    #preview.active { display: block; }
-    #preview-placeholder { color: var(--ctp-overlay1); font-size: 0.9em; }
+    .retro-win #preview-placeholder { color: #aaa; font-size: 0.9em; }
 
-    .controls-row {
+    .retro-win .retro-group {
+      border: none;
+      padding: 8px 10px 10px;
+      margin: 0 0 12px;
+      background: var(--win-face);
+    }
+    .retro-win .retro-group.bevel-out {
+      border-top: 1px solid var(--win-face-darker);
+      border-left: 1px solid var(--win-face-darker);
+      border-right: 1px solid var(--win-face-light);
+      border-bottom: 1px solid var(--win-face-light);
+      box-shadow: none;
+    }
+    .retro-win .retro-group legend {
+      padding: 0 4px;
+      font-size: 11px;
+    }
+
+    .retro-win .retro-controls-row {
       display: flex;
       align-items: center;
       gap: 10px;
       flex-wrap: wrap;
-      margin-bottom: 14px;
     }
-    .controls-row select { width: auto; flex: 1; min-width: 160px; margin-bottom: 0; }
-    #cast-btn { flex: 0 0 auto; padding: 10px 22px; }
-    #mic-btn { flex: 0 0 auto; padding: 10px 16px; }
+    .retro-win .retro-controls-row select { width: auto; flex: 0 1 230px; min-width: 150px; margin-bottom: 0; }
 
-    #status { font-size: 0.85em; margin-bottom: 14px; color: var(--ctp-subtext0); }
-    #status.error { color: var(--ctp-red); }
-    #status.live { color: var(--ctp-green); }
+    .retro-win .retro-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      flex: 0 0 auto;
+      padding: 6px 14px;
+      background: var(--win-face);
+      color: var(--win-text);
+      border: none;
+      border-radius: 0;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      border-top: 1px solid var(--win-face-light);
+      border-left: 1px solid var(--win-face-light);
+      border-right: 1px solid var(--win-face-darker);
+      border-bottom: 1px solid var(--win-face-darker);
+      box-shadow: inset 1px 1px 0 #fff, inset -1px -1px 0 var(--win-face-dark);
+    }
+    .retro-win .retro-btn:hover { background: var(--win-face); filter: none; }
+    .retro-win .retro-btn:active {
+      border-top: 1px solid var(--win-face-darker);
+      border-left: 1px solid var(--win-face-darker);
+      border-right: 1px solid var(--win-face-light);
+      border-bottom: 1px solid var(--win-face-light);
+      box-shadow: inset 1px 1px 0 var(--win-face-dark), inset -1px -1px 0 #fff;
+    }
+    .retro-win .retro-btn:disabled, .retro-win .retro-btn:disabled:hover {
+      opacity: 0.5;
+      cursor: not-allowed;
+      filter: none;
+    }
 
-    #unconfigured-note {
+    .retro-win #cast-btn.btn-primary { color: #006400; }
+    .retro-win #cast-btn.btn-danger,
+    .retro-win #mic-btn.btn-danger { color: #8b0000; }
+
+    .retro-win .retro-select {
+      background: var(--win-field-bg);
+      color: var(--win-text);
+      border-radius: 0;
+      border-top: 1px solid var(--win-face-darker);
+      border-left: 1px solid var(--win-face-darker);
+      border-right: 1px solid var(--win-face-light);
+      border-bottom: 1px solid var(--win-face-light);
+      box-shadow: inset 1px 1px 0 var(--win-face-dark);
+      padding: 4px 6px;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .retro-win .retro-note {
       display: none;
-      font-size: 0.85em;
-      color: var(--ctp-overlay1);
-      margin-top: 10px;
+      font-size: 11px;
+      color: var(--win-face-darker);
+      margin-top: 8px;
     }
 
-    .stats-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 10px;
-      margin-top: 4px;
+    .retro-win .icon { width: 16px; height: 16px; flex: none; }
+
+    .retro-win .retro-statusbar {
+      display: flex;
+      flex-wrap: wrap;
+      background: var(--win-face);
+      border-top: 1px solid var(--win-face-darker);
+      margin: 0 10px 10px;
     }
-    .stat-tile {
-      background: var(--ctp-mantle);
-      border: 1px solid var(--ctp-surface1);
-      border-radius: 6px;
-      padding: 10px 12px;
+    .retro-win .retro-statuscell {
+      flex: 1 1 0;
+      min-width: 64px;
+      padding: 3px 8px;
+      font-size: 11px;
+      border-right: 1px solid var(--win-face-dark);
+      border-left: 1px solid var(--win-face-light);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
-    .stat-tile .stat-label { font-size: 0.72em; color: var(--ctp-subtext0); text-transform: uppercase; letter-spacing: 0.03em; }
-    .stat-tile .stat-value { font-size: 1.05em; color: var(--ctp-text); margin-top: 2px; }
+    .retro-win .retro-statuscell:first-child { border-left: none; }
+    .retro-win .retro-statuscell:last-child { border-right: none; }
+    .retro-win .retro-statuscell-status { flex: 2 1 0; min-width: 130px; }
+    .retro-win .retro-stat-label { color: var(--win-face-darker); opacity: 0.7; margin-right: 4px; }
+
+    .retro-win #status.live { color: #008000; }
+    .retro-win #status.error { color: #c00000; }
   </style>
 </head>
 <body>
@@ -75,52 +208,84 @@
   </header>
 
   <main class="golive">
-    <h1>Screenshare control</h1>
-    <p class="sub">Cast your screen straight from the browser over WHIP.</p>
+    <div class="retro-win">
+      <svg style="display:none">
+        <symbol id="icon-broadcast" viewBox="0 0 24 24">
+          <path d="M12 15v6" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 15a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="currentColor" stroke="none"/>
+          <path d="M8 9c-1.3 1-2 2.3-2 4s.7 3 2 4" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M16 9c1.3 1 2 2.3 2 4s-.7 3-2 4" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M5 6c-2 1.8-3 4-3 7s1 5.2 3 7" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M19 6c2 1.8 3 4 3 7s-1 5.2-3 7" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-stop" viewBox="0 0 24 24">
+          <rect x="5" y="5" width="14" height="14" fill="currentColor" stroke="none"/>
+        </symbol>
+        <symbol id="icon-mic-on" viewBox="0 0 24 24">
+          <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" fill="none" stroke-width="2.5"/>
+          <path d="M6 11c0 3.3 2.7 6 6 6s6-2.7 6-6" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 17v4" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 21h8" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-mic-off" viewBox="0 0 24 24">
+          <rect x="9" y="3" width="6" height="11" rx="3" stroke="currentColor" fill="none" stroke-width="2.5"/>
+          <path d="M6 11c0 3.3 2.7 6 6 6s6-2.7 6-6" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M12 17v4" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M8 21h8" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 4l16 16" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </symbol>
+        <symbol id="icon-monitor" viewBox="0 0 24 24">
+          <rect x="3" y="4" width="18" height="12" rx="1" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M9 20h6" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M12 16v4" stroke="currentColor" fill="none" stroke-width="2.5" stroke-linecap="round"/>
+        </symbol>
+      </svg>
 
-    <div id="preview-wrap">
-      <video id="preview" autoplay muted playsinline></video>
-      <span id="preview-placeholder">No preview yet</span>
-    </div>
+      <div class="retro-titlebar">
+        <svg class="icon"><use href="#icon-monitor"></use></svg>
+        <span>Screenshare Control</span>
+      </div>
+      <div class="retro-menustrip">
+        <span>Session</span>
+        <span>View</span>
+        <span>Help</span>
+      </div>
 
-    <div class="controls-row">
-      <button id="cast-btn" class="btn-primary" type="button">Start casting</button>
-      <button id="mic-btn" class="secondary" type="button" disabled>Enable mic</button>
-      <select id="mic-select" disabled>
-        <option value="">Default microphone</option>
-      </select>
-    </div>
+      <div class="retro-body">
+        <div id="preview-wrap" class="retro-preview bevel-in">
+          <video id="preview" autoplay muted playsinline></video>
+          <span id="preview-placeholder">No preview yet</span>
+        </div>
 
-    <div id="status"></div>
-    <div id="unconfigured-note">
-      Screenshare publishing isn't configured on this server yet.
-    </div>
+        <fieldset class="retro-group bevel-out">
+          <legend>Controls</legend>
+          <div class="controls-row retro-controls-row">
+            <button id="cast-btn" class="btn-primary retro-btn" type="button">
+              <svg class="icon"><use href="#icon-broadcast"></use></svg>
+              <span id="cast-btn-label">Start casting</span>
+            </button>
+            <button id="mic-btn" class="secondary retro-btn" type="button" disabled>
+              <svg class="icon"><use href="#icon-mic-off"></use></svg>
+              <span id="mic-btn-label">Enable mic</span>
+            </button>
+            <select id="mic-select" class="retro-select" disabled>
+              <option value="">Default microphone</option>
+            </select>
+          </div>
+          <div id="unconfigured-note" class="retro-note">
+            Screenshare publishing isn't configured on this server yet.
+          </div>
+        </fieldset>
+      </div>
 
-    <div class="section-heading">Stream info</div>
-    <div class="stats-grid">
-      <div class="stat-tile">
-        <div class="stat-label">Connection</div>
-        <div class="stat-value" id="stat-connection">&mdash;</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Video codec</div>
-        <div class="stat-value" id="stat-video-codec">&mdash;</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Resolution</div>
-        <div class="stat-value" id="stat-resolution">&mdash;</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Frame rate</div>
-        <div class="stat-value" id="stat-fps">&mdash;</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Video bitrate</div>
-        <div class="stat-value" id="stat-video-bitrate">&mdash;</div>
-      </div>
-      <div class="stat-tile">
-        <div class="stat-label">Audio</div>
-        <div class="stat-value" id="stat-audio-codec">&mdash;</div>
+      <div class="retro-statusbar bevel-in">
+        <div class="retro-statuscell retro-statuscell-status"><span id="status">Ready.</span></div>
+        <div class="retro-statuscell"><span class="retro-stat-label">Conn</span><span id="stat-connection">&mdash;</span></div>
+        <div class="retro-statuscell"><span class="retro-stat-label">Vid</span><span id="stat-video-codec">&mdash;</span></div>
+        <div class="retro-statuscell"><span class="retro-stat-label">Res</span><span id="stat-resolution">&mdash;</span></div>
+        <div class="retro-statuscell"><span class="retro-stat-label">FPS</span><span id="stat-fps">&mdash;</span></div>
+        <div class="retro-statuscell"><span class="retro-stat-label">Kbps</span><span id="stat-video-bitrate">&mdash;</span></div>
+        <div class="retro-statuscell"><span class="retro-stat-label">Aud</span><span id="stat-audio-codec">&mdash;</span></div>
       </div>
     </div>
   </main>
@@ -137,6 +302,10 @@
     const preview = document.getElementById("preview");
     const previewPlaceholder = document.getElementById("preview-placeholder");
     const unconfiguredNote = document.getElementById("unconfigured-note");
+    const castLabel = document.getElementById("cast-btn-label");
+    const micLabel = document.getElementById("mic-btn-label");
+    const castIcon = castBtn.querySelector("use");
+    const micIcon = micBtn.querySelector("use");
 
     const statConnection = document.getElementById("stat-connection");
     const statVideoCodec = document.getElementById("stat-video-codec");
@@ -234,7 +403,8 @@
       try {
         await olk.startStreaming(whipUrl, { preferredVideoFormat: "H264" });
         live = true;
-        castBtn.textContent = "Stop stream";
+        castLabel.textContent = "Stop stream";
+        castIcon.setAttribute("href", "#icon-stop");
         castBtn.classList.remove("btn-primary");
         castBtn.classList.add("btn-danger");
         setStatus("Live!", "live");
@@ -338,12 +508,14 @@
           setStatus("Microphone access denied.", "error");
           return;
         }
-        micBtn.textContent = "Mute mic";
+        micLabel.textContent = "Mute mic";
+        micIcon.setAttribute("href", "#icon-mic-on");
         return;
       }
       micMuted = !micMuted;
       micGainNode.gain.value = micMuted ? 0 : 1;
-      micBtn.textContent = micMuted ? "Unmute mic" : "Mute mic";
+      micLabel.textContent = micMuted ? "Unmute mic" : "Mute mic";
+      micIcon.setAttribute("href", micMuted ? "#icon-mic-off" : "#icon-mic-on");
       micBtn.classList.toggle("btn-danger", micMuted);
     });
 
@@ -488,10 +660,12 @@
       preview.srcObject = null;
       preview.classList.remove("active");
       previewPlaceholder.style.display = "";
-      castBtn.textContent = "Start casting";
+      castLabel.textContent = "Start casting";
+      castIcon.setAttribute("href", "#icon-broadcast");
       castBtn.classList.remove("btn-danger");
       castBtn.classList.add("btn-primary");
-      micBtn.textContent = "Enable mic";
+      micLabel.textContent = "Enable mic";
+      micIcon.setAttribute("href", "#icon-mic-off");
       micBtn.classList.remove("btn-danger");
       micBtn.disabled = true;
       micSelect.disabled = true;
