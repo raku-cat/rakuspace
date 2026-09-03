@@ -147,7 +147,7 @@ static bool pipe_open(PipeHandle &p)
 static bool pipe_write_all(PipeHandle &p, const char *buf, size_t len)
 {
 	while (len > 0) {
-		ssize_t wrote = ::write(p.fd, buf, len);
+		ssize_t wrote = ::send(p.fd, buf, len, MSG_NOSIGNAL);
 		if (wrote <= 0)
 			return false;
 		buf += wrote;
@@ -208,7 +208,7 @@ bool drain_frame(PipeHandle &p)
 struct DiscordRpc::Impl {
 	std::mutex mtx;
 	PipeHandle pipe;
-	bool ready = false;
+	std::atomic<bool> ready{false};
 };
 
 DiscordRpc &DiscordRpc::instance()
@@ -250,25 +250,32 @@ bool DiscordRpc::set_activity(const Activity &a)
 	std::lock_guard<std::mutex> lk(impl_->mtx);
 	if (!impl_->ready)
 		return false;
-	json msg = {
-		{"cmd", "SET_ACTIVITY"},
-		{"nonce", make_nonce()},
-		{"args", {{"pid", (int)
+	try {
+		json msg = {
+			{"cmd", "SET_ACTIVITY"},
+			{"nonce", make_nonce()},
+			{"args", {{"pid", (int)
 #ifdef _WIN32
-				 GetCurrentProcessId()
+					 GetCurrentProcessId()
 #else
-				 ::getpid()
+					 ::getpid()
 #endif
-			  },
-			  {"activity", activity_to_json(a)}}},
-	};
-	if (!send_frame(impl_->pipe, 1, msg.dump())) {
-		impl_->pipe.reset();
-		impl_->ready = false;
+				  },
+				  {"activity", activity_to_json(a)}}},
+		};
+		if (!send_frame(impl_->pipe, 1, msg.dump())) {
+			impl_->pipe.reset();
+			impl_->ready = false;
+			return false;
+		}
+		if (!drain_frame(impl_->pipe)) { // ack; ignore contents
+			impl_->pipe.reset();
+			impl_->ready = false;
+		}
+		return true;
+	} catch (...) {
 		return false;
 	}
-	drain_frame(impl_->pipe); // ack; ignore contents
-	return true;
 }
 
 bool DiscordRpc::clear()
@@ -293,7 +300,10 @@ bool DiscordRpc::clear()
 		impl_->ready = false;
 		return false;
 	}
-	drain_frame(impl_->pipe);
+	if (!drain_frame(impl_->pipe)) {
+		impl_->pipe.reset();
+		impl_->ready = false;
+	}
 	return true;
 }
 
