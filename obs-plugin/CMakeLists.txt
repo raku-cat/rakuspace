@@ -19,10 +19,15 @@ target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::libobs)
 find_package(CURL REQUIRED)
 target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE CURL::libcurl)
 
-if(ENABLE_FRONTEND_API)
+# The go-live glue needs the frontend streaming start/stop events, so the
+# frontend API is a hard requirement for this plugin. ENABLE_FRONTEND_API is
+# left on (see CMakePresets.json) so the legacy LibObs finder path in
+# cmake/*/defaults.cmake also builds the OBS::obs-frontend-api target; the
+# modern config package is tried here and the target is required either way.
+if(NOT TARGET OBS::obs-frontend-api)
   find_package(obs-frontend-api REQUIRED)
-  target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
 endif()
+target_link_libraries(${CMAKE_PROJECT_NAME} PRIVATE OBS::obs-frontend-api)
 
 if(ENABLE_QT)
   find_package(Qt6 COMPONENTS Widgets Core)
@@ -37,7 +42,7 @@ if(ENABLE_QT)
   )
 endif()
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp src/discord-rpc.cpp src/rakuspace-service.cpp)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp src/discord-rpc.cpp src/rakuspace-service.cpp src/rakuspace-http.cpp)
 
 target_compile_features(${CMAKE_PROJECT_NAME} PRIVATE cxx_std_17)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)

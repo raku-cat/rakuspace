@@ -149,6 +149,3 @@ void rakuspace_register_service(void)
 
 	obs_register_service(&rakuspace_service_info);
 }
-
-// TEMP stub — real implementation added in Task 5 (moves to plugin-main.cpp). Remove this then.
-bool rakuspace_verify_button(obs_properties_t *, obs_property_t *, void *) { return true; }
