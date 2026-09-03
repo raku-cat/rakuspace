@@ -37,10 +37,17 @@ if(ENABLE_QT)
   )
 endif()
 
-target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp)
+target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp src/discord-rpc.cpp)
 
 target_compile_features(${CMAKE_PROJECT_NAME} PRIVATE cxx_std_17)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/src")
 
 set_target_properties_plugin(${CMAKE_PROJECT_NAME} PROPERTIES OUTPUT_NAME ${_name})
+
+option(RAKUSPACE_BUILD_SMOKE "Build the standalone Discord RPC smoke test" OFF)
+if(RAKUSPACE_BUILD_SMOKE)
+  add_executable(rpc-smoke src/tools/rpc-smoke.cpp src/discord-rpc.cpp)
+  target_include_directories(rpc-smoke PRIVATE src)
+  target_compile_features(rpc-smoke PRIVATE cxx_std_17)
+endif()
