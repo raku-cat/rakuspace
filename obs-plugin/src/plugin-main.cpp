@@ -18,6 +18,8 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include <obs-module.h>
 
+#include "rakuspace-service.hpp"
+
 OBS_DECLARE_MODULE()
 OBS_MODULE_USE_DEFAULT_LOCALE("rakuspace-obs", "en-US")
 
@@ -28,6 +30,7 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 bool obs_module_load(void)
 {
+	rakuspace_register_service();
 	blog(LOG_INFO, "[rakuspace-obs] loaded");
 	return true;
 }
