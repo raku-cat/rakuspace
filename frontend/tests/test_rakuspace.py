@@ -161,7 +161,7 @@ def test_index_route(client):
 def test_api_check_unknown_stream(client):
     resp = client.get("/api/check/nobody")
     assert resp.status_code == 200
-    assert resp.get_json() == {"known": False}
+    assert resp.get_json() == {"known": False, "title": None}
 
 
 def test_api_check_known_stream(client, db_path):
@@ -171,7 +171,19 @@ def test_api_check_known_stream(client, db_path):
     conn.close()
 
     resp = client.get("/api/check/alice")
-    assert resp.get_json() == {"known": True}
+    assert resp.get_json() == {"known": True, "title": None}
+
+
+def test_api_check_returns_stream_title(client, db_path):
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO users (username, streamkey, stream_title) VALUES ('bob', 'k', 'Perfect Dark 100%')"
+    )
+    conn.commit()
+    conn.close()
+
+    resp = client.get("/api/check/bob")
+    assert resp.get_json() == {"known": True, "title": "Perfect Dark 100%"}
 
 
 def test_play_stream_unknown_streamer_still_renders(client):

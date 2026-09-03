@@ -794,9 +794,10 @@ def go_live(username):
 def check_stream(streamname):
     db = get_db()
     cur = db.cursor()
-    cur.execute("SELECT 1 FROM users WHERE username=?", (streamname,))
-    exists = cur.fetchone() is not None
-    return jsonify({"known": exists})
+    cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
+    row = cur.fetchone()
+    title = row["stream_title"] if row is not None else None
+    return jsonify({"known": row is not None, "title": title})
 
 
 def _viewers_event(count, named, viewer_username):
