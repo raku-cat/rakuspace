@@ -12,11 +12,10 @@
  *   OME_RTMP_PROVIDER_PORT=1935
  *   OME_APP_NAME=rakuspace
  */
-#define RAKUSPACE_RTMP_INGEST "rtmp://park.raku.party:1935/rakuspace"
+#define RAKUSPACE_RTMP_INGEST "rtmp://live.rakuspace.on.omusubi.trans:1935/rakuspace"
 
 /* Public site base, no trailing slash. Used for /api/check and /live links. */
-#define RAKUSPACE_SITE_BASE "https://rakuspace.site"
+#define RAKUSPACE_SITE_BASE "https://rakuspace.apps.raku.party"
 
 /* Discord Application ID from the Developer Portal (Rich Presence). */
-// TODO(human): real Application ID
-#define RAKUSPACE_DISCORD_APP_ID "REPLACE_WITH_REAL_DISCORD_APP_ID"
+#define RAKUSPACE_DISCORD_APP_ID "1413929830055153898"
