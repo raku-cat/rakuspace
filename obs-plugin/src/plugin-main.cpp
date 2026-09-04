@@ -31,6 +31,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include "rakuspace-dock.hpp"
 #include "rakuspace-config.h"
 #include "rakuspace-http.hpp"
+#include "rakuspace-output.hpp"
 #include "discord-rpc.hpp"
 
 OBS_DECLARE_MODULE()
@@ -132,6 +133,7 @@ void obs_module_unload(void)
 {
 	obs_frontend_remove_event_callback(on_frontend_event, nullptr);
 	rakuspace::DiscordRpc::instance().close();
+	rakuspace::OutputManager::instance().shutdown();
 	// Let any in-flight go-live fetch finish before tearing down libcurl.
 	for (int i = 0; i < 400 && g_inflight.load(std::memory_order_relaxed) > 0; ++i)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
