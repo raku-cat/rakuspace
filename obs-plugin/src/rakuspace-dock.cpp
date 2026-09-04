@@ -1,4 +1,5 @@
 #include "rakuspace-dock.hpp"
+#include "rakuspace-config-store.hpp"
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
@@ -10,6 +11,10 @@
 #include <QLabel>
 #include <QDialog>
 #include <QMainWindow>
+#include <QLineEdit>
+#include <QCheckBox>
+#include <QFormLayout>
+#include <QDialogButtonBox>
 
 namespace rakuspace {
 
@@ -20,12 +25,52 @@ void open_settings_dialog()
 	auto *parent = static_cast<QWidget *>(obs_frontend_get_main_window());
 	QDialog dlg(parent);
 	dlg.setWindowTitle("RakuSpace Settings");
-	auto *lay = new QVBoxLayout(&dlg);
-	lay->addWidget(new QLabel("Settings land here in Task 2.", &dlg));
-	auto *ok = new QPushButton("Close", &dlg);
-	QObject::connect(ok, &QPushButton::clicked, &dlg, &QDialog::accept);
-	lay->addWidget(ok);
-	dlg.exec();
+
+	Config c = load_config();
+
+	auto *key = new QLineEdit(QString::fromStdString(c.stream_key), &dlg);
+	key->setEchoMode(QLineEdit::Password);
+	auto *user = new QLineEdit(QString::fromStdString(c.username), &dlg);
+	auto *disc = new QCheckBox("Share status to Discord", &dlg);
+	disc->setChecked(c.discord_enabled);
+	auto *title = new QCheckBox("Include stream title", &dlg);
+	title->setChecked(c.discord_include_title);
+	auto *statusText =
+		new QLineEdit(QString::fromStdString(c.discord_status_text), &dlg);
+
+	auto sync = [&] {
+		title->setEnabled(disc->isChecked());
+		statusText->setEnabled(disc->isChecked());
+	};
+	QObject::connect(disc, &QCheckBox::toggled, &dlg, sync);
+	sync();
+
+	auto *form = new QFormLayout();
+	form->addRow("Stream key", key);
+	form->addRow("Username", user);
+	form->addRow(disc);
+	form->addRow(title);
+	form->addRow("Status text", statusText);
+
+	auto *bb = new QDialogButtonBox(
+		QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+	QObject::connect(bb, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+	QObject::connect(bb, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+	auto *root = new QVBoxLayout(&dlg);
+	root->addLayout(form);
+	root->addWidget(bb);
+
+	if (dlg.exec() != QDialog::Accepted)
+		return;
+
+	c.stream_key = key->text().toStdString();
+	c.username = user->text().toStdString();
+	c.discord_enabled = disc->isChecked();
+	c.discord_include_title = title->isChecked();
+	c.discord_status_text = statusText->text().toStdString();
+	if (!save_config(c))
+		blog(LOG_WARNING, "[rakuspace-obs] could not write config.json");
 }
 
 void register_dock()
