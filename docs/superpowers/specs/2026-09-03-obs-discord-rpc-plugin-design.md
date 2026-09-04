@@ -216,3 +216,66 @@ Presence requires none of that.
 - Any presence while offline, or a "last live at" card.
 - Viewer count / live status in the card (would need polling + rate-limit handling).
 - A dockable status panel in OBS.
+
+---
+
+# Revision 1 (2026-09-04): the service dropdown will not show a third-party service
+
+## What we found
+
+OBS `OBSBasicSettings::LoadServices()` builds the Settings > Stream service list
+only from `rtmp_common`'s property list (from `rtmp-services/data/services.json`)
+plus hardcoded WHIP and "Custom" entries. It never calls `obs_enum_service_types`.
+A plugin that registers its own `obs_service_info` loads fine but is invisible in
+that dropdown and its callbacks never fire. Confirmed against OBS master source and
+a matching OBS forum report. This was the "verify early" risk on old Task 4.
+
+## New shape (supersedes old Tasks 4 and parts of 5)
+
+Drop the registered service. Drive an `rtmp_custom` service from the plugin instead.
+
+- **No `rakuspace_service` type.** Delete `rakuspace-service.cpp` / `.hpp` and the
+  `rakuspace_register_service()` call.
+- **Config store:** JSON at `obs_module_config_path("config.json")`. Keys:
+  `stream_key`, `username`, `discord_enabled`, `discord_include_title`,
+  `discord_status_text`. Read/written with the vendored `nlohmann/json`.
+- **One Tools menu item**, `obs_frontend_add_tools_menu_item("RakuSpace Stream Setup", ...)`.
+  - Config file missing: write a filled template, open it with the OS handler
+    (`ShellExecuteA` on Windows, `xdg-open` elsewhere), return.
+  - Config file present: refuse if `obs_frontend_streaming_active()`. Else parse it,
+    build an `obs_data_t` with `server` = `RAKUSPACE_RTMP_INGEST`, `key` =
+    `stream_key`, `use_auth` = false. `obs_service_create("rtmp_custom",
+    "rakuspace_stream", settings, NULL)` -> `obs_frontend_set_streaming_service()`
+    -> `obs_frontend_save_streaming_service()` -> `obs_service_release()` our ref
+    (the setter takes its own; getter is borrowed per OBS docs at tags 31.1.1 /
+    32.2.2). Re-open the file so the user can adjust Discord options.
+  - Parse failure: log clearly, re-open the file.
+- **Settings > Stream** then shows a coherent Custom entry with the URL and key
+  filled. The user never opens that page.
+
+## Go-live glue changes (was Task 5)
+
+Kept whole: `DiscordRpc`, `check_user`, `url_encode`, the activity payload, the
+generation counter, the in-flight guard, `curl_global_*`.
+
+Changed:
+- Read Discord options from the config store, not a service settings object.
+- `STREAMING_STARTED` gate: case-insensitive host compare of the active service's
+  `OBS_SERVICE_CONNECT_INFO_SERVER_URL` against the host in `RAKUSPACE_RTMP_INGEST`.
+  Not full-string equality (a trailing slash or hand edit would kill presence).
+- No verify-username button (the panel is gone). Username is validated at go-live
+  only: `known:false` skips Discord, stream is unaffected. This now applies whether
+  or not `discord_include_title` is set.
+
+## String rules (all user-facing text and docs)
+
+No em dashes, no en dashes, no hyphen as punctuation. Short. Fragments are fine for
+labels and hints. If a line needs a comma or dash to hold together it is too long.
+Applies to `data/locale/en-US.ini`, `obs-plugin/README.md`, the top-level README
+line, and the PR body.
+
+## What stays from the original spec
+
+`/api/check` returning `title` (shipped on main). The Discord card shape. The
+Discord Application setup step. The baked constants. OBS 30.1 floor. Windows-only
+target. No automated plugin test harness. All the deliberate exclusions.
