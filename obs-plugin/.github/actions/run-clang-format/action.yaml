@@ -17,7 +17,7 @@ runs:
       shell: bash
       run: |
         : Check Runner Operating System 🏃‍♂️
-        echo "::notice::run-clang-format action requires a macOS-based or Linux-based runner."
+        echo "::notice::run-clang-format action requires a Linux-based runner."
         exit 2
 
     - name: Check for Changed Files ✅

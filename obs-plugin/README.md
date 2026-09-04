@@ -1,59 +1,99 @@
-# OBS Plugin Template
+# RakuSpace OBS plugin
 
-## Introduction
+## What it is
 
-The plugin template is meant to be used as a starting point for OBS Studio plugin development. It includes:
+An OBS Studio plugin for [RakuSpace](https://rakuspace.site). It does two things:
 
-* Boilerplate plugin source code
-* A CMake project file
-* GitHub Actions workflows and repository actions
+- Adds a **"RakuSpace"** service to **Settings → Stream**, so you pick RakuSpace
+  from the Service dropdown, paste your stream key and username, and OBS streams
+  to the right RTMP ingest without you copying URLs around.
+- Optionally shows a **Discord Rich Presence** card while you are live: your
+  stream title, a link button back to your RakuSpace page, and an elapsed timer.
 
-## Supported Build Environments
+Requires **OBS Studio 30.1 or newer**. Built and shipped for **Windows x64**;
+Linux is a compile-check target only (see *Build from source*).
 
-| Platform  | Tool   |
-|-----------|--------|
-| Windows   | Visual Studio 17 2022 |
-| macOS     | XCode 16.0 |
-| Windows, macOS  | CMake 3.30.5 |
-| Ubuntu 24.04 | CMake 3.28.3 |
-| Ubuntu 24.04 | `ninja-build` |
-| Ubuntu 24.04 | `pkg-config`
-| Ubuntu 24.04 | `build-essential` |
+## Install (Windows)
 
-## Quick Start
+1. Download the latest Windows build from the repository **Releases** page, or
+   from the **CI artifacts** of a successful `Build Project` run.
+2. Run the installer, **or** unzip the archive into
+   `%ProgramData%\obs-studio\plugins\`.
+3. Restart OBS Studio.
 
-An absolute bare-bones [Quick Start Guide](https://github.com/obsproject/obs-plugintemplate/wiki/Quick-Start-Guide) is available in the wiki.
+## Use
 
-## Documentation
+1. **Settings → Stream**.
+2. **Service** → **RakuSpace**.
+3. Paste the **Stream Key** shown on your RakuSpace `stream_info` page.
+4. Type your **RakuSpace username** (the name your channel lives at, e.g.
+   `rakuspace.site/live/<username>`).
+5. Optionally use the **Verify** button to check the username against the site.
+6. Optionally tick **"Share status to Discord"** (and, nested under it, whether
+   to include your stream title in the Discord card).
 
-All documentation can be found in the [Plugin Template Wiki](https://github.com/obsproject/obs-plugintemplate/wiki).
+That is the whole surface. There is no connection-status readout, no viewer
+count, no reconnect handling, and no "stream offline" card — by design.
 
-Suggested reading to get up and running:
+## Pointing it at another deployment
 
-* [Getting started](https://github.com/obsproject/obs-plugintemplate/wiki/Getting-Started)
-* [Build system requirements](https://github.com/obsproject/obs-plugintemplate/wiki/Build-System-Requirements)
-* [Build system options](https://github.com/obsproject/obs-plugintemplate/wiki/CMake-Build-System-Options)
+Three constants in [`src/rakuspace-config.h`](src/rakuspace-config.h) are the
+only values to change for a different RakuSpace / OME deployment:
 
-## GitHub Actions & CI
+- **`RAKUSPACE_RTMP_INGEST`** — scheme + host + port + OME app name, no trailing
+  slash. Must match what `/stream_info` shows as the "RTMP URL"
+  (currently `rtmp://park.raku.party:1935/rakuspace`).
+- **`RAKUSPACE_SITE_BASE`** — public site base, no trailing slash. Used for the
+  `/api/check` username lookup and the `/live` link button
+  (currently `https://rakuspace.site`).
+- **`RAKUSPACE_DISCORD_APP_ID`** — the Discord Application ID for the Rich
+  Presence card (see below). **Currently the placeholder
+  `REPLACE_WITH_REAL_DISCORD_APP_ID`** — the Discord integration is inert until
+  this is filled in with a real ID.
 
-Default GitHub Actions workflows are available for the following repository actions:
+Change these, rebuild, redistribute.
 
-* `push`: Run for commits or tags pushed to `master` or `main` branches.
-* `pr-pull`: Run when a Pull Request has been pushed or synchronized.
-* `dispatch`: Run when triggered by the workflow dispatch in GitHub's user interface.
-* `build-project`: Builds the actual project and is triggered by other workflows.
-* `check-format`: Checks CMake and plugin source code formatting and is triggered by other workflows.
+## Discord Application setup (one-time)
 
-The workflows make use of GitHub repository actions (contained in `.github/actions`) and build scripts (contained in `.github/scripts`) which are not needed for local development, but might need to be adjusted if additional/different steps are required to build the plugin.
+The Rich Presence card needs a Discord Application ID. There is **no OAuth, no
+scopes, and no app review** involved — Rich Presence just needs the numeric ID
+and its uploaded art.
 
-### Retrieving build artifacts
+1. Open the [Discord Developer Portal](https://discord.com/developers/applications).
+2. **New Application**, name it **"RakuSpace"**.
+3. **Rich Presence → Art Assets** → upload the RakuSpace logo as an asset with
+   the key **`logo`** (the plugin references `large_image: "logo"`).
+4. Copy the **Application ID** from the app's **General Information** page into
+   `RAKUSPACE_DISCORD_APP_ID` in `src/rakuspace-config.h`, then rebuild.
 
-Successful builds on GitHub Actions will produce build artifacts that can be downloaded for testing. These artifacts are commonly simple archives and will not contain package installers or installation programs.
+## Build from source
 
-### Building a Release
+```
+cmake --preset windows-x64     # Windows x64
+cmake --preset ubuntu-x86_64   # Linux compile-check
+cmake --build --preset windows-x64      # or ubuntu-x86_64
+```
 
-To create a release, an appropriately named tag needs to be pushed to the `main`/`master` branch using semantic versioning (e.g., `12.3.4`, `23.4.5-beta2`). A draft release will be created on the associated repository with generated installer packages or installation programs attached as release artifacts.
+Optional standalone Discord check (not part of the plugin, no libobs needed):
 
-## Signing and Notarizing on macOS
+```
+cmake --preset ubuntu-x86_64 -DRAKUSPACE_BUILD_SMOKE=ON
+cmake --build --preset ubuntu-x86_64 --target rpc-smoke
+./rpc-smoke        # sends one SET_ACTIVITY to a running Discord, then clears it
+```
 
-Basic concepts of codesigning and notarization on macOS are explained in the correspodning [Wiki article](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS) which has a specific section for the [GitHub Actions setup](https://github.com/obsproject/obs-plugintemplate/wiki/Codesigning-On-macOS#setting-up-code-signing-for-github-actions).
+### Note on `curl` on Windows CI
+
+`buildspec.json` does **not** pin `curl` in its `dependencies`. The CMake build
+uses `find_package(CURL)` and is expected to resolve libcurl from the OBS
+prebuilt dependencies bundle on the Windows runner. This has not yet been
+confirmed against a real Windows CI run — verify it on the first CI build and
+add an explicit dependency pin if it does not resolve.
+
+## Status
+
+The **full manual test matrix on Windows has not been run** (it needs a Windows
+box with OBS 30.1+, Discord desktop, a live OME ingest, and a real streamer
+key). `RAKUSPACE_DISCORD_APP_ID` is **still the placeholder** noted above; the
+Discord Rich Presence path is wired but untested end to end until a real
+Application ID is in place.
