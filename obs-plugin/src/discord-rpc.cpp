@@ -35,6 +35,7 @@ std::string make_nonce()
 json activity_to_json(const Activity &a)
 {
 	json act;
+	act["type"] = 3; // Watching: member list reads "Watching <app name>"
 	act["details"] = a.details;
 	if (!a.state.empty())
 		act["state"] = a.state;

@@ -125,6 +125,10 @@ struct OutputManager::Impl {
 	std::mutex cb_mtx;   // guards cb only, never held with mtx
 	OutputCallback cb;
 	std::atomic<bool> running{false};
+	// Set once per session when a Stopped is dispatched (real on_stop or the
+	// synthetic one in stop()), cleared in start(). Guards against firing
+	// Stopped twice when a Stop click races the real stop signal.
+	std::atomic<bool> stop_dispatched{false};
 
 	static void fire(Impl *d, OutputEvent ev, int code);
 	static void on_start(void *param, calldata_t *);
@@ -181,6 +185,7 @@ void OutputManager::Impl::on_stop(void *param, calldata_t *cd)
 	long long code = 0;
 	calldata_get_int(cd, "code", &code);
 	d->running.store(false);
+	d->stop_dispatched.store(true);
 	fire(d, OutputEvent::Stopped, (int)code);
 }
 
@@ -208,6 +213,7 @@ bool OutputManager::start(const std::string &stream_key)
 		blog(LOG_WARNING, "[rakuspace-obs] stream key is empty");
 		return false;
 	}
+	d->stop_dispatched.store(false);
 
 	obs_data_t *svc_s = obs_data_create();
 	obs_data_set_string(svc_s, "server", RAKUSPACE_RTMP_INGEST);
@@ -327,8 +333,11 @@ void OutputManager::stop()
 		// start() returning true and the output going active: release
 		// now and fire Stopped so the dock leaves "Connecting". Only
 		// when there was an output at entry, so reap() style calls on an
-		// already clean Impl stay silent.
-		fire_stopped = d->output != nullptr;
+		// already clean Impl stay silent. exchange() suppresses the
+		// synthetic Stopped when the real on_stop already dispatched one
+		// (fast stop then Stop click before the Qt lambda runs).
+		fire_stopped = d->output != nullptr &&
+			       !d->stop_dispatched.exchange(true);
 		Impl::stop_locked_impl(d);
 	}
 	if (fire_stopped)
@@ -346,7 +355,10 @@ void OutputManager::shutdown()
 	std::lock_guard<std::mutex> lk(d->mtx);
 	if (d->output && obs_output_active(d->output)) {
 		obs_output_stop(d->output);
-		for (int i = 0; i < 200 && obs_output_active(d->output); ++i)
+		// Bounded: this runs on the UI thread from the EXIT event and at
+		// unload, so cap the wait low. A graceful RTMP close is well
+		// under a second, a wedged socket gets force_stop after 1s.
+		for (int i = 0; i < 100 && obs_output_active(d->output); ++i)
 			os_sleep_ms(10);
 		obs_output_force_stop(d->output);
 	}

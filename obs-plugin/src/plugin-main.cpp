@@ -123,11 +123,12 @@ void presence_on_live()
 // cannot block the Qt thread. Counted in g_inflight so unload waits for it.
 void presence_on_offline()
 {
-	// Bump the generation first, always, so any in-flight live push is stale
-	// even when Discord has since been turned off.
+	// Bump the generation first, always, so any in-flight live push is stale.
 	uint64_t gen = ++g_stream_generation;
-	if (!load_config().discord_enabled)
-		return;
+	// Always run the clear worker, even if discord_enabled is now false. A user
+	// who toggled Discord off mid-stream still has a card pushed from when it
+	// was on, and this is the only path that tears it down before unload.
+	// clear() and close() are cheap no-ops when the socket was never connected.
 	g_inflight.fetch_add(1, std::memory_order_relaxed);
 	std::thread([gen] {
 		InflightGuard inflight_guard;
@@ -174,7 +175,10 @@ void obs_module_unload(void)
 	// Let any in-flight go-live fetch finish before tearing down libcurl.
 	for (int i = 0; i < 400 && g_inflight.load(std::memory_order_relaxed) > 0; ++i)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
-	// A live worker may have reconnected during the spin, close once more.
+	// A live worker may have reconnected during the spin, close once more. A
+	// worker that got past the spin after this point is knowingly accepted:
+	// at process exit it is harmless, and a plugin reload is rare enough that
+	// the residual race is not worth more teardown machinery.
 	rakuspace::DiscordRpc::instance().close();
 	curl_global_cleanup();
 	blog(LOG_INFO, "[rakuspace-obs] unloaded");
