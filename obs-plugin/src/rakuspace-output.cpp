@@ -122,6 +122,7 @@ struct OutputManager::Impl {
 	obs_service_t *service = nullptr;
 	obs_encoder_t *venc = nullptr;
 	obs_encoder_t *aenc = nullptr;
+	std::mutex cb_mtx;   // guards cb only, never held with mtx
 	OutputCallback cb;
 	std::atomic<bool> running{false};
 
@@ -143,6 +144,7 @@ OutputManager &OutputManager::instance()
 
 void OutputManager::set_callback(OutputCallback cb)
 {
+	std::lock_guard<std::mutex> lk(d->cb_mtx);
 	d->cb = std::move(cb);
 }
 
@@ -153,8 +155,17 @@ bool OutputManager::active() const
 
 void OutputManager::Impl::fire(Impl *d, OutputEvent ev, int code)
 {
-	if (d->cb)
-		d->cb(ev, code);
+	// Copy the callback under its own small lock, then invoke it with no
+	// lock held. set_callback can run on the Qt thread while a libobs
+	// signal thread is in here; d->mtx is deliberately not taken so the
+	// lock order with stop()/shutdown() stays one way.
+	OutputCallback cb;
+	{
+		std::lock_guard<std::mutex> lk(d->cb_mtx);
+		cb = d->cb;
+	}
+	if (cb)
+		cb(ev, code);
 }
 
 void OutputManager::Impl::on_start(void *param, calldata_t *)
