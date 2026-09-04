@@ -108,7 +108,7 @@ static void build_and_push_activity(uint64_t generation, std::string username,
 	a.large_image = "logo";
 	a.large_text = "RakuSpace";
 	a.button_label = "Watch Stream";
-	a.button_url = std::string(RAKUSPACE_SITE_BASE) + "/live/" + username;
+	a.button_url = std::string(RAKUSPACE_SITE_BASE) + "/live/" + rakuspace::url_encode(username);
 
 	auto &rpc = rakuspace::DiscordRpc::instance();
 	if (generation == g_stream_generation.load() && rpc.connect() &&
