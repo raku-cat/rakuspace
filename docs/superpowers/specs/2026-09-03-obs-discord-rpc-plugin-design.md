@@ -221,6 +221,9 @@ Presence requires none of that.
 
 # Revision 1 (2026-09-04): the service dropdown will not show a third-party service
 
+> **SUPERSEDED by Revision 2.** The rtmp_custom Tools menu handoff below is
+> replaced by a dock plus a plugin-owned parallel output. Kept for history.
+
 ## What we found
 
 OBS `OBSBasicSettings::LoadServices()` builds the Settings > Stream service list
@@ -279,3 +282,211 @@ line, and the PR body.
 `/api/check` returning `title` (shipped on main). The Discord card shape. The
 Discord Application setup step. The baked constants. OBS 30.1 floor. Windows-only
 target. No automated plugin test harness. All the deliberate exclusions.
+
+---
+
+# Revision 2 (2026-09-04): a dock plus a plugin-owned parallel output
+
+## Why this changes again
+
+Two things fell out of real testing and a source check.
+
+1. A third-party `obs_register_service` type never shows in Settings > Stream
+   (Revision 1). Confirmed.
+2. `obs_service_apply_encoder_settings` is called **only** from the OBS
+   frontend (`SimpleOutput::Update`, `AdvancedOutput::UpdateStreamSettings` /
+   `UpdateAudioSettings` / `SetupStreaming`), against `main->GetService()`.
+   `libobs/obs-output.c` never calls it. So a plugin-owned output cannot
+   trigger a registered service's `apply_encoder_settings` hook. Registering
+   a service buys nothing.
+
+So: no registered service. The plugin runs its **own** output next to OBS's
+normal stream, the obs-multi-rtmp pattern. A dock gives the one-button connect
+UX. The plugin owns the output's start and stop signals, so Discord presence
+ownership is exact with no network probe on other streams.
+
+## New shape (supersedes Revision 1 and old Tasks 4, 5)
+
+### Delete
+
+`obs-plugin/src/rakuspace-service.cpp` and `.hpp`. No `obs_register_service`,
+no `obs_service_info`, no `get_connect_info`, no service properties panel.
+
+### Keep unchanged
+
+`discord-rpc.*`, `rakuspace-http.*` (`check_user`, `url_encode`), the activity
+payload shape, the generation counter, the in-flight guard, `curl_global_*`,
+the URL-encoded button username.
+
+### Component A: config store
+
+JSON at `obs_module_config_path("config.json")`, vendored `nlohmann/json`.
+
+```cpp
+struct Config {
+    std::string stream_key;
+    std::string username;
+    bool        discord_enabled = false;
+    bool        discord_include_title = false;
+    std::string discord_status_text = "Live on RakuSpace";
+};
+Config load_config();          // missing or bad file -> defaults, never throws
+bool   save_config(const Config &);
+```
+
+Written by the settings dialog, read at go-live. Not an OBS service settings
+object.
+
+### Component B: the dock
+
+Registered with `obs_frontend_add_dock_by_id("rakuspace_dock", "RakuSpace",
+widget)`. Qt widget, built with the template's `ENABLE_QT` option (prebuilt
+Qt6 per platform from `buildspec.json`). Never hand-roll Qt.
+
+Contents:
+
+- One button. "Go Live to RakuSpace" when idle. "Stop" while our output runs.
+- A status line: `Offline`, `Live 00:12:34` (elapsed, updated by a 1s
+  `QTimer`), `Reconnecting`.
+- A small gear button. Opens the settings dialog.
+
+The button starts or stops **our** output only. OBS's own Start Streaming
+button still exists and still works. Two go-live controls coexist. Documented,
+not hidden (OBS gives no API to hide its button).
+
+### Component C: settings dialog
+
+A `QDialog`, also openable from an `obs_frontend_add_tools_menu_item`
+("RakuSpace Settings"). Fields:
+
+| Field | Widget | Notes |
+|---|---|---|
+| Stream key | `QLineEdit`, `QLineEdit::Password` | `<userid>_<streamkey>` from `/stream_info` |
+| Username | `QLineEdit` | link and title fetch only |
+| Share status to Discord | `QCheckBox` | master toggle |
+| Include stream title | `QCheckBox` | enabled only when the master is on |
+| Status text | `QLineEdit`, default `Live on RakuSpace` | enabled only when the master is on |
+
+OK writes `config.json` via `save_config`. Cancel discards.
+
+### Component D: the parallel output
+
+Created fresh on each go-live, torn down on stop.
+
+- **Service:** `obs_service_create("rtmp_custom", "rakuspace_out_service",
+  settings, nullptr)` with `server` = `RAKUSPACE_RTMP_INGEST`, `key` =
+  `Config::stream_key`, `use_auth` = false.
+- **Encoders: self-owned, not shared.** Read the current profile's stream
+  encoder id and settings, clone them, create our own with
+  `obs_video_encoder_create` / `obs_audio_encoder_create`, bind with
+  `obs_encoder_set_video(venc, obs_get_video())` and
+  `obs_encoder_set_audio(aenc, obs_get_audio(), 0)`. Self-owned means no
+  refcount entanglement with OBS starting or stopping its own stream during
+  the session. The extra encode only costs anything if the user also runs
+  OBS's main stream at the same time, which RakuSpace streamers do not.
+  - Source of the id and settings: the profile config from
+    `obs_frontend_get_profile_config()`. Simple mode: `[SimpleOutput]
+    StreamEncoder` maps to an encoder id, bitrate from `[SimpleOutput] VBitrate`
+    / `ABitrate`. Advanced mode (`[AdvOut] Encoder`, settings in the profile's
+    `streamEncoder.json`). The implementer confirms the exact keys against the
+    installed headers and OBS source.
+  - If the id cannot be resolved, fall back to `obs_x264` at CBR with the
+    profile's configured video bitrate (or 6000 if that also fails) and AAC
+    at 160, and `blog(LOG_WARNING, ...)` that the fallback was used.
+- **B-frames:** before `obs_video_encoder_create`, on the cloned video
+  settings dict, `obs_data_set_int(v, "bf", 0)` and
+  `obs_data_set_int(v, "bframes", 0)`. Nothing else. No codec, no rate
+  control, no bitrate, no preset, no profile. `blog(LOG_INFO, ...)` one line
+  saying B-frames were set to 0. No dialog, no modal.
+- **Output:** `obs_output_create("rtmp_output", "rakuspace_out", nullptr,
+  nullptr)`. Attach service and encoders. Turn on the output's built-in
+  reconnect (`obs_output_set_reconnect_settings` if present, else the
+  `rtmp_output` reconnect defaults). `obs_output_start`.
+
+### Component E: signal handling
+
+The output's `start`, `stop`, `reconnect`, `reconnect_success` signals fire
+on **libobs threads, not the Qt thread**. Every dock update from a handler
+goes through `QMetaObject::invokeMethod(dockWidget, [...]{...},
+Qt::QueuedConnection)`. Touching a widget directly from a signal handler is a
+crash.
+
+| Signal | Status line | Discord | Notes |
+|---|---|---|---|
+| `start` | `Live 00:00:00`, start the 1s timer | push activity | generation++ |
+| `reconnect` | `Reconnecting` | leave as is | |
+| `reconnect_success` | back to `Live ...` | leave as is | |
+| `stop` | `Offline`, stop the timer | clear activity | read `calldata_get_int(cd, "code")` for the log line only; the card clears on any stop |
+
+`rtmp_output` handles reconnect internally, so `stop` only fires on a real
+stop, whether clean or after it gives up. The card clears on every `stop`.
+
+### Component F: Discord presence off our signals
+
+No `OBS_FRONTEND_EVENT_STREAMING_*` for presence any more. The generation
+counter, the detached worker, the `g_inflight` counter, and the bounded spin
+in `obs_module_unload` all carry over. They matter more here: the clear now
+runs on a libobs output-stop thread, so a blocked Discord pipe write could
+wedge OBS shutdown. `discord-rpc` gets a short send and receive timeout
+(non-blocking socket or a low `SO_SNDTIMEO` / `SO_RCVTIMEO`, a few hundred ms)
+so a wedged Discord never blocks a libobs thread. This also closes the
+deferred "pipe I/O could hang" item.
+
+### Component G: unload
+
+`obs_module_unload`:
+
+- If our output is running, `obs_output_stop`, wait bounded for it to end,
+  then force it if needed.
+- Release output, then encoders, then service, in that order.
+- Existing teardown: `obs_frontend_remove_event_callback` if any remain,
+  `curl_global_cleanup`, the bounded `g_inflight` spin.
+- The dock widget is owned by OBS after `add_dock_by_id`; do not free it.
+
+## Build and CI
+
+- Flip the template's `ENABLE_QT` to on in the presets. The template pulls
+  prebuilt Qt6 from `buildspec.json` per platform. Do not add a bare
+  `find_package(Qt6)` of your own.
+- Linux build stays a compile check. Windows build is the real target, run by
+  the user on the VM.
+- Still no automated plugin test harness.
+
+## Manual test matrix (replaces items 1, 2, 8 of the original)
+
+1. Dock "RakuSpace" appears. Button reads "Go Live to RakuSpace", status
+   "Offline".
+2. Gear opens the settings dialog. Enter key and username, enable Discord,
+   set status text, OK. Reopen: values persisted.
+3. Click the button with a valid key. Our output connects to OME, playback
+   works at `/live/<username>`. Status shows "Live" with a running timer.
+   Button reads "Stop".
+4. Click "Stop". Output ends, status "Offline", button resets.
+5. OBS's own Settings > Stream is unchanged the whole time. Starting OBS's own
+   stream separately still works.
+6. `discord_enabled` off. Go live via the dock. No card.
+7. `discord_enabled` on, Discord running. Go live. Card shows the status text
+   and a Watch button at `rakuspace.apps.raku.party/live/<username>`. Stop.
+   Card clears.
+8. `discord_enabled` on, Discord not running. Go live. Stream fine, no error.
+9. `discord_include_title` on, real title. Line 2 shows the title. No title
+   or a timeout: one line.
+10. Bad username. No card. Stream still goes live.
+11. Pull the network mid-stream. Status shows "Reconnecting". Restore. Back to
+    "Live", card unchanged. Kill it for good. Status "Offline", card clears.
+12. Close OBS while live. It exits without hanging.
+
+## String rules
+
+Unchanged from Revision 1. No em dashes, no en dashes, no hyphen as
+punctuation. Short. Fragments fine for labels and hints. Applies to every Qt
+string, `data/locale/en-US.ini`, `obs-plugin/README.md`, the top-level README
+line, the PR body.
+
+## What stays from earlier revisions
+
+`/api/check` returning `title` (on main). The Discord card shape and the
+activity fields. The Discord Application setup step. The baked constants
+(`rakuspace-config.h`). OBS 30.1 floor. Windows-only tested target. No
+automated plugin test harness. Every deliberate exclusion (no viewer count,
+no connection-status UI, no offline card).
