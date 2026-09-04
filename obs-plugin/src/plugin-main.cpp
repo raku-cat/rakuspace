@@ -28,7 +28,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <string>
 #include <thread>
 
-#include "rakuspace-service.hpp"
+#include "rakuspace-dock.hpp"
 #include "rakuspace-config.h"
 #include "rakuspace-http.hpp"
 #include "discord-rpc.hpp"
@@ -39,39 +39,6 @@ OBS_MODULE_USE_DEFAULT_LOCALE("rakuspace-obs", "en-US")
 MODULE_EXPORT const char *obs_module_description(void)
 {
 	return "RakuSpace streaming service and Discord Rich Presence";
-}
-
-/* ---------------------------------------------------------------------------
- * Verify-username button (wired from rs_properties in rakuspace-service.cpp;
- * forward-declared there, defined here with external linkage).
- * ------------------------------------------------------------------------- */
-
-bool rakuspace_verify_button(obs_properties_t *props, obs_property_t *, void *)
-{
-	obs_service_t *svc = obs_frontend_get_streaming_service();
-	std::string username;
-	if (svc) {
-		obs_data_t *s = obs_service_get_settings(svc);
-		username = obs_data_get_string(s, "username");
-		obs_data_release(s);
-	}
-
-	obs_property_t *result = obs_properties_get(props, "verify_result");
-	if (username.empty()) {
-		obs_property_set_description(result, obs_module_text("RakuSpace.Prop.VerifyBad"));
-		return true;
-	}
-
-	rakuspace::CheckResult cr = rakuspace::check_user(username);
-	const char *msg;
-	if (!cr.reached)
-		msg = obs_module_text("RakuSpace.Prop.VerifyErr");
-	else if (cr.known)
-		msg = obs_module_text("RakuSpace.Prop.VerifyOk");
-	else
-		msg = obs_module_text("RakuSpace.Prop.VerifyBad");
-	obs_property_set_description(result, msg);
-	return true; // refresh the properties view
 }
 
 /* ---------------------------------------------------------------------------
@@ -122,9 +89,6 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 		obs_service_t *svc = obs_frontend_get_streaming_service();
 		if (!svc)
 			return;
-		const char *type = obs_service_get_type(svc);
-		if (!type || std::string(type) != RAKUSPACE_SERVICE_ID)
-			return;
 
 		obs_data_t *s = obs_service_get_settings(svc);
 		bool enabled = obs_data_get_bool(s, "discord_enabled");
@@ -156,8 +120,10 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 bool obs_module_load(void)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
-	rakuspace_register_service();
 	obs_frontend_add_event_callback(on_frontend_event, nullptr);
+	rakuspace::register_dock();
+	obs_frontend_add_tools_menu_item("RakuSpace Settings",
+					[](void *) { rakuspace::open_settings_dialog(); }, nullptr);
 	blog(LOG_INFO, "[rakuspace-obs] loaded");
 	return true;
 }
