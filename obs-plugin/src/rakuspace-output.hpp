@@ -23,6 +23,7 @@ public:
 	bool start(const std::string &stream_key);
 
 	void stop();                            // async, the Stopped event follows
+	void reap();                            // release a finished output, no event
 	bool active() const;
 
 	void shutdown();                        // obs_module_unload, blocking

@@ -224,6 +224,7 @@ bool OutputManager::start(const std::string &stream_key)
 	std::string enc_id = resolve_stream_encoder_id();
 
 	obs_data_t *v_s = build_video_settings();
+	long long resolved_vbitrate = obs_data_get_int(v_s, "bitrate");
 	d->venc = obs_video_encoder_create(enc_id.c_str(), "rakuspace_venc",
 					  v_s, nullptr);
 	obs_data_release(v_s);
@@ -231,7 +232,8 @@ bool OutputManager::start(const std::string &stream_key)
 		blog(LOG_WARNING, "[rakuspace-obs] video encoder %s failed, using obs_x264",
 		     enc_id.c_str());
 		obs_data_t *fx = obs_data_create();
-		obs_data_set_int(fx, "bitrate", 6000);
+		obs_data_set_int(fx, "bitrate",
+				 resolved_vbitrate > 0 ? resolved_vbitrate : 6000);
 		obs_data_set_string(fx, "rate_control", "CBR");
 		obs_data_set_int(fx, "bf", 0);
 		obs_data_set_int(fx, "bframes", 0);
@@ -314,12 +316,29 @@ void OutputManager::Impl::stop_locked_impl(Impl *d)
 
 void OutputManager::stop()
 {
-	std::lock_guard<std::mutex> lk(d->mtx);
-	if (d->output && obs_output_active(d->output)) {
-		obs_output_stop(d->output);   // graceful, on_stop clears state
-		return;
+	bool fire_stopped = false;
+	{
+		std::lock_guard<std::mutex> lk(d->mtx);
+		if (d->output && obs_output_active(d->output)) {
+			obs_output_stop(d->output);   // graceful, on_stop clears state
+			return;
+		}
+		// Non active branch. A real Stop click in the window between
+		// start() returning true and the output going active: release
+		// now and fire Stopped so the dock leaves "Connecting". Only
+		// when there was an output at entry, so reap() style calls on an
+		// already clean Impl stay silent.
+		fire_stopped = d->output != nullptr;
+		Impl::stop_locked_impl(d);
 	}
-	Impl::stop_locked_impl(d);
+	if (fire_stopped)
+		Impl::fire(d, OutputEvent::Stopped, 0);   // no mtx held, matches on_stop
+}
+
+void OutputManager::reap()
+{
+	std::lock_guard<std::mutex> lk(d->mtx);
+	Impl::stop_locked_impl(d);   // release the finished output branch, fire nothing
 }
 
 void OutputManager::shutdown()

@@ -1,6 +1,6 @@
 // Manual check: with Discord desktop running, build with -DRAKUSPACE_BUILD_SMOKE=ON
-// and run ./rpc-smoke — a "Live on RakuSpace" card should appear on your profile
-// for ~10 seconds, then clear.
+// and run ./rpc-smoke. A "Live on RakuSpace" card should appear on your profile
+// for about 10 seconds, then clear.
 #include "../discord-rpc.hpp"
 #include <chrono>
 #include <cstdio>

@@ -25,6 +25,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <chrono>
 #include <cstdint>
 #include <ctime>
+#include <mutex>
 #include <string>
 #include <thread>
 
@@ -50,6 +51,10 @@ MODULE_EXPORT const char *obs_module_description(void)
 
 static std::atomic<uint64_t> g_stream_generation{0};
 static std::atomic<int> g_inflight{0};
+// Serializes the generation check with the Discord push and clear so a fast stop
+// then restart cannot land a stale clear over the fresh card. Never held across
+// the check_user HTTP fetch.
+static std::mutex g_presence_mtx;
 
 struct InflightGuard {
 	~InflightGuard() { g_inflight.fetch_sub(1, std::memory_order_relaxed); }
@@ -61,31 +66,39 @@ static void build_and_push_activity(uint64_t generation, std::string username,
 {
 	InflightGuard inflight_guard;
 
-	std::string state;
-	if (include_title) {
-		rakuspace::CheckResult cr = rakuspace::check_user(username);
-		if (cr.reached && !cr.known)
-			return; // username invalid -> skip Discord entirely
-		if (cr.reached && !cr.title.empty())
-			state = cr.title;
+	try {
+		std::string state;
+		if (include_title) {
+			rakuspace::CheckResult cr = rakuspace::check_user(username);
+			if (cr.reached && !cr.known)
+				return; // username invalid -> skip Discord entirely
+			if (cr.reached && !cr.title.empty())
+				state = cr.title;
+		}
+
+		if (generation != g_stream_generation.load())
+			return; // stream already stopped
+
+		rakuspace::Activity a;
+		a.details = status_text.empty() ? "Live on RakuSpace" : status_text;
+		a.state = state;
+		a.start_ts = start_ts;
+		a.large_image = "logo";
+		a.large_text = "RakuSpace";
+		a.button_label = "Watch Stream";
+		a.button_url = std::string(RAKUSPACE_SITE_BASE) + "/live/" +
+			       rakuspace::url_encode(username);
+
+		{
+			std::lock_guard<std::mutex> lk(g_presence_mtx);
+			if (generation != g_stream_generation.load())
+				return;
+			auto &rpc = rakuspace::DiscordRpc::instance();
+			if (rpc.connect() && generation == g_stream_generation.load())
+				rpc.set_activity(a);
+		}
+	} catch (...) {
 	}
-
-	if (generation != g_stream_generation.load())
-		return; // stream already stopped
-
-	rakuspace::Activity a;
-	a.details = status_text.empty() ? "Live on RakuSpace" : status_text;
-	a.state = state;
-	a.start_ts = start_ts;
-	a.large_image = "logo";
-	a.large_text = "RakuSpace";
-	a.button_label = "Watch Stream";
-	a.button_url = std::string(RAKUSPACE_SITE_BASE) + "/live/" + rakuspace::url_encode(username);
-
-	auto &rpc = rakuspace::DiscordRpc::instance();
-	if (generation == g_stream_generation.load() && rpc.connect() &&
-	    generation == g_stream_generation.load())
-		rpc.set_activity(a);
 }
 
 namespace rakuspace {
@@ -110,13 +123,23 @@ void presence_on_live()
 // cannot block the Qt thread. Counted in g_inflight so unload waits for it.
 void presence_on_offline()
 {
-	++g_stream_generation;
+	// Bump the generation first, always, so any in-flight live push is stale
+	// even when Discord has since been turned off.
+	uint64_t gen = ++g_stream_generation;
+	if (!load_config().discord_enabled)
+		return;
 	g_inflight.fetch_add(1, std::memory_order_relaxed);
-	std::thread([] {
+	std::thread([gen] {
 		InflightGuard inflight_guard;
-		auto &rpc = rakuspace::DiscordRpc::instance();
-		rpc.clear();
-		rpc.close();
+		try {
+			std::lock_guard<std::mutex> lk(g_presence_mtx);
+			if (gen != g_stream_generation.load())
+				return;
+			auto &rpc = rakuspace::DiscordRpc::instance();
+			rpc.clear();
+			rpc.close();
+		} catch (...) {
+		}
 	}).detach();
 }
 
@@ -124,10 +147,19 @@ void presence_on_offline()
 
 /* ------------------------------------------------------------------------- */
 
+// Stop the output while the video and audio pipeline is still alive, not only at
+// module unload.
+static void on_frontend_event(enum obs_frontend_event event, void *)
+{
+	if (event == OBS_FRONTEND_EVENT_EXIT)
+		rakuspace::OutputManager::instance().shutdown();
+}
+
 bool obs_module_load(void)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
 	rakuspace::register_dock();
+	obs_frontend_add_event_callback(on_frontend_event, nullptr);
 	obs_frontend_add_tools_menu_item("RakuSpace Settings",
 					[](void *) { rakuspace::open_settings_dialog(); }, nullptr);
 	blog(LOG_INFO, "[rakuspace-obs] loaded");
@@ -136,11 +168,14 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
+	obs_frontend_remove_event_callback(on_frontend_event, nullptr);
 	rakuspace::DiscordRpc::instance().close();
 	rakuspace::OutputManager::instance().shutdown();
 	// Let any in-flight go-live fetch finish before tearing down libcurl.
 	for (int i = 0; i < 400 && g_inflight.load(std::memory_order_relaxed) > 0; ++i)
 		std::this_thread::sleep_for(std::chrono::milliseconds(10));
+	// A live worker may have reconnected during the spin, close once more.
+	rakuspace::DiscordRpc::instance().close();
 	curl_global_cleanup();
 	blog(LOG_INFO, "[rakuspace-obs] unloaded");
 }

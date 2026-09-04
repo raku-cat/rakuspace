@@ -231,6 +231,11 @@ void register_dock()
 					break;
 				case OutputEvent::Stopped:
 					g_ctl->onStopped(code);
+					// Reap now that the libobs stop path has
+					// unwound: release the output and encoders
+					// so a held hardware encoder session is
+					// freed. No event, no recursion.
+					rakuspace::OutputManager::instance().reap();
 					rakuspace::presence_on_offline();
 					break;
 				}

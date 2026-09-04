@@ -1,5 +1,5 @@
 /*
-RakuSpace OBS plugin — blocking HTTP helper for /api/check
+RakuSpace OBS plugin. Blocking HTTP helper for /api/check.
 Copyright (C) 2026 RakuSpace <rakubunny@gmail.com>
 
 This program is free software; you can redistribute it and/or modify
