@@ -69,6 +69,7 @@ CheckResult check_user(const std::string &username)
 	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &body);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, 3000L);
 	curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, 3000L);
+	curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, "rakuspace-obs/1.0");
 

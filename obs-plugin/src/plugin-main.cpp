@@ -22,6 +22,7 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 #include <curl/curl.h>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <ctime>
 #include <string>
@@ -78,11 +79,16 @@ bool rakuspace_verify_button(obs_properties_t *props, obs_property_t *, void *)
  * ------------------------------------------------------------------------- */
 
 static std::atomic<uint64_t> g_stream_generation{0};
+static std::atomic<int> g_inflight{0};
 
 static void build_and_push_activity(uint64_t generation, std::string username,
 				    bool include_title, std::string status_text,
 				    int64_t start_ts)
 {
+	struct InflightGuard {
+		~InflightGuard() { g_inflight.fetch_sub(1, std::memory_order_relaxed); }
+	} inflight_guard;
+
 	std::string state;
 	if (include_title) {
 		rakuspace::CheckResult cr = rakuspace::check_user(username);
@@ -105,7 +111,8 @@ static void build_and_push_activity(uint64_t generation, std::string username,
 	a.button_url = std::string(RAKUSPACE_SITE_BASE) + "/live/" + username;
 
 	auto &rpc = rakuspace::DiscordRpc::instance();
-	if (rpc.connect() && generation == g_stream_generation.load())
+	if (generation == g_stream_generation.load() && rpc.connect() &&
+	    generation == g_stream_generation.load())
 		rpc.set_activity(a);
 }
 
@@ -131,6 +138,7 @@ static void on_frontend_event(enum obs_frontend_event event, void *)
 
 		uint64_t gen = ++g_stream_generation;
 		int64_t start_ts = (int64_t)::time(nullptr);
+		g_inflight.fetch_add(1, std::memory_order_relaxed);
 		std::thread(build_and_push_activity, gen, username, include_title,
 			    status_text, start_ts)
 			.detach();
@@ -158,6 +166,9 @@ void obs_module_unload(void)
 {
 	obs_frontend_remove_event_callback(on_frontend_event, nullptr);
 	rakuspace::DiscordRpc::instance().close();
+	// Let any in-flight go-live fetch finish before tearing down libcurl.
+	for (int i = 0; i < 400 && g_inflight.load(std::memory_order_relaxed) > 0; ++i)
+		std::this_thread::sleep_for(std::chrono::milliseconds(10));
 	curl_global_cleanup();
 	blog(LOG_INFO, "[rakuspace-obs] unloaded");
 }
