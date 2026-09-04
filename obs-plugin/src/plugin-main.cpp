@@ -30,8 +30,10 @@ with this program. If not, see <https://www.gnu.org/licenses/>
 
 #include "rakuspace-dock.hpp"
 #include "rakuspace-config.h"
+#include "rakuspace-config-store.hpp"
 #include "rakuspace-http.hpp"
 #include "rakuspace-output.hpp"
+#include "rakuspace-presence.hpp"
 #include "discord-rpc.hpp"
 
 OBS_DECLARE_MODULE()
@@ -39,7 +41,7 @@ OBS_MODULE_USE_DEFAULT_LOCALE("rakuspace-obs", "en-US")
 
 MODULE_EXPORT const char *obs_module_description(void)
 {
-	return "RakuSpace streaming service and Discord Rich Presence";
+	return "RakuSpace dock and Discord Rich Presence";
 }
 
 /* ---------------------------------------------------------------------------
@@ -49,13 +51,15 @@ MODULE_EXPORT const char *obs_module_description(void)
 static std::atomic<uint64_t> g_stream_generation{0};
 static std::atomic<int> g_inflight{0};
 
+struct InflightGuard {
+	~InflightGuard() { g_inflight.fetch_sub(1, std::memory_order_relaxed); }
+};
+
 static void build_and_push_activity(uint64_t generation, std::string username,
 				    bool include_title, std::string status_text,
 				    int64_t start_ts)
 {
-	struct InflightGuard {
-		~InflightGuard() { g_inflight.fetch_sub(1, std::memory_order_relaxed); }
-	} inflight_guard;
+	InflightGuard inflight_guard;
 
 	std::string state;
 	if (include_title) {
@@ -84,44 +88,45 @@ static void build_and_push_activity(uint64_t generation, std::string username,
 		rpc.set_activity(a);
 }
 
-static void on_frontend_event(enum obs_frontend_event event, void *)
+namespace rakuspace {
+
+// Push a Discord activity when our own output goes live. Safe to call from the
+// Qt thread: it only spawns a detached worker, it never touches DiscordRpc here.
+void presence_on_live()
 {
-	if (event == OBS_FRONTEND_EVENT_STREAMING_STARTED) {
-		obs_service_t *svc = obs_frontend_get_streaming_service();
-		if (!svc)
-			return;
+	Config c = load_config();
+	if (!c.discord_enabled || c.username.empty())
+		return;
 
-		obs_data_t *s = obs_service_get_settings(svc);
-		bool enabled = obs_data_get_bool(s, "discord_enabled");
-		std::string username = obs_data_get_string(s, "username");
-		bool include_title = obs_data_get_bool(s, "discord_include_title");
-		std::string status_text = obs_data_get_string(s, "discord_status_text");
-		obs_data_release(s);
+	uint64_t gen = ++g_stream_generation;
+	g_inflight.fetch_add(1, std::memory_order_relaxed);
+	std::thread(build_and_push_activity, gen, c.username, c.discord_include_title,
+		    c.discord_status_text, (int64_t)::time(nullptr))
+		.detach();
+}
 
-		if (!enabled || username.empty())
-			return;
-
-		uint64_t gen = ++g_stream_generation;
-		int64_t start_ts = (int64_t)::time(nullptr);
-		g_inflight.fetch_add(1, std::memory_order_relaxed);
-		std::thread(build_and_push_activity, gen, username, include_title,
-			    status_text, start_ts)
-			.detach();
-
-	} else if (event == OBS_FRONTEND_EVENT_STREAMING_STOPPED) {
-		++g_stream_generation; // invalidate any in-flight build
+// Clear the card when our output stops. Bumps the generation so any in-flight
+// push is stale, then does the clear on a detached worker so a wedged Discord
+// cannot block the Qt thread. Counted in g_inflight so unload waits for it.
+void presence_on_offline()
+{
+	++g_stream_generation;
+	g_inflight.fetch_add(1, std::memory_order_relaxed);
+	std::thread([] {
+		InflightGuard inflight_guard;
 		auto &rpc = rakuspace::DiscordRpc::instance();
 		rpc.clear();
 		rpc.close();
-	}
+	}).detach();
 }
+
+} // namespace rakuspace
 
 /* ------------------------------------------------------------------------- */
 
 bool obs_module_load(void)
 {
 	curl_global_init(CURL_GLOBAL_DEFAULT);
-	obs_frontend_add_event_callback(on_frontend_event, nullptr);
 	rakuspace::register_dock();
 	obs_frontend_add_tools_menu_item("RakuSpace Settings",
 					[](void *) { rakuspace::open_settings_dialog(); }, nullptr);
@@ -131,7 +136,6 @@ bool obs_module_load(void)
 
 void obs_module_unload(void)
 {
-	obs_frontend_remove_event_callback(on_frontend_event, nullptr);
 	rakuspace::DiscordRpc::instance().close();
 	rakuspace::OutputManager::instance().shutdown();
 	// Let any in-flight go-live fetch finish before tearing down libcurl.

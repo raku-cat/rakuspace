@@ -14,6 +14,7 @@
 #include <windows.h>
 #else
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <unistd.h>
 #include <cstdlib>
@@ -66,6 +67,10 @@ struct PipeHandle {
 	}
 };
 
+// Timeout strategy on Windows: the pipe is byte mode and every WriteFile and
+// ReadFile result is checked, on failure the handle is reset and ready drops.
+// Usage is two writes per session (handshake, then one SET_ACTIVITY), so that
+// closed pipe reset plus the short session is the bound. No overlapped I/O.
 static bool pipe_open(PipeHandle &p)
 {
 	for (int i = 0; i < 10; ++i) {
@@ -135,6 +140,15 @@ static bool pipe_open(PipeHandle &p)
 			if (fd < 0)
 				continue;
 			if (::connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) {
+				// Short send/recv timeout so a stuck Discord
+				// cannot block a caller. On timeout a read or
+				// write returns an error, the caller resets the
+				// pipe and drops ready, same as a closed pipe.
+				struct timeval tv {
+					0, 300000
+				}; // 300 ms
+				setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+				setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 				p.fd = fd;
 				return true;
 			}

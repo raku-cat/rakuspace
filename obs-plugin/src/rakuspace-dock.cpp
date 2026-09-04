@@ -1,6 +1,7 @@
 #include "rakuspace-dock.hpp"
 #include "rakuspace-config-store.hpp"
 #include "rakuspace-output.hpp"
+#include "rakuspace-presence.hpp"
 
 #include <obs-module.h>
 #include <obs-frontend-api.h>
@@ -220,6 +221,7 @@ void register_dock()
 				switch (ev) {
 				case OutputEvent::Started:
 					g_ctl->onStarted();
+					rakuspace::presence_on_live();
 					break;
 				case OutputEvent::Reconnecting:
 					g_ctl->onReconnecting();
@@ -229,6 +231,7 @@ void register_dock()
 					break;
 				case OutputEvent::Stopped:
 					g_ctl->onStopped(code);
+					rakuspace::presence_on_offline();
 					break;
 				}
 			},
