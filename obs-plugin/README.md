@@ -49,6 +49,17 @@ cmake --build --preset windows-x64 --config RelWithDebInfo
 
 Optional `-DRAKUSPACE_BUILD_SMOKE=ON` builds `rpc-smoke`.
 
+Logs the git short hash on load (`[rakuspace-obs] loaded, build <hash>`). Check
+the OBS log against `git rev-parse --short=10 HEAD` to confirm a rebuilt
+plugin actually replaced the loaded one.
+
 ## Scope
 
 No viewer count. No connection status readout beyond the dock. No offline card.
+
+The activity is set to Watching so the card logic has a real type, but
+Discord's local RPC connection ignores it for the member list line, which
+still reads "Playing RakuSpace." Only the big card (details, state, image,
+button) is real. This is a known Discord limitation, not something we can
+fix from here. If Discord ever honors it, the member list line will start
+reading "Watching RakuSpace" with no code change needed.
