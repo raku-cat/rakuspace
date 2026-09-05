@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <title>Go Live - RakuSpace</title>
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="manifest" href="{{ url_for('static', filename='manifest-golive.webmanifest') }}">
+  <script src="{{ url_for('static', filename='pwa.js') }}" defer></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
   <style>
     #preview { display: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
@@ -247,6 +249,51 @@
 
     .retro-win #status.live { color: #7ee787; }
     .retro-win #status.error { color: #ff7b72; }
+
+    /* ---- Installed as the standalone Go Live app: chromeless, flush to
+       the window edge, since the header's back/install buttons and the
+       centered page frame have no purpose here. ---- */
+    /* Only the Go Live app's own launch (marked by body.golive-app, set in
+       JS from the ?app=1 start_url param) goes chromeless - the main app's
+       scope also covers /go_live, and standalone mode alone can't tell
+       those two apart. Visiting /go_live inside the main installed app
+       keeps its header and back link. */
+    @media (display-mode: standalone) {
+      body.golive-app header { display: none; }
+
+      body.golive-app main.golive.centered {
+        display: flex;
+        padding: 0;
+        min-height: 100vh;
+        background: none;
+      }
+
+      body.golive-app main.golive.centered .retro-win {
+        max-width: none;
+        width: 100vw;
+        height: 100vh;
+        margin: 0;
+        border-radius: 0;
+        box-shadow: none;
+        display: flex;
+        flex-direction: column;
+      }
+
+      body.golive-app main.golive.centered .retro-win .retro-body {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+      }
+
+      body.golive-app main.golive.centered .retro-win .retro-preview {
+        flex: 1;
+        min-height: 0;
+        aspect-ratio: auto;
+      }
+
+      body.golive-app main.golive.centered .retro-win .retro-statusbar { flex: none; }
+    }
   </style>
 </head>
 <body>
@@ -259,7 +306,10 @@
       </a>
       <span class="page-title">Go Live!</span>
     </div>
-    <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
+    <div class="header-links">
+      <button class="install-btn" id="install-btn" type="button" hidden>Install as app (PWA)<span class="new-badge">New!</span></button>
+      <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
+    </div>
   </header>
 
   <main class="golive centered">
@@ -352,6 +402,14 @@
 
   <script src="{{ url_for('static', filename='ovenlivekit/OvenLiveKit.min.js') }}"></script>
   <script>
+    // Set only when launched from the installed Go Live app's own
+    // start_url (?app=1). The main app's scope also covers /go_live, so
+    // display-mode alone can't distinguish "installed Go Live app" from
+    // "installed main app, currently showing /go_live" - this marker can.
+    if (new URLSearchParams(location.search).has("app")) {
+      document.body.classList.add("golive-app");
+    }
+
     const whipUrl = {{ whip_url | tojson }};
 
     const castBtn = document.getElementById("cast-btn");
@@ -742,6 +800,31 @@
       } else {
         startCasting();
       }
+    });
+
+    // Install-as-app button: only ever shown once the browser tells us it's
+    // actually installable (beforeinstallprompt), and never inside the app
+    // once it's already installed standalone.
+    const installBtn = document.getElementById("install-btn");
+    let deferredInstallPrompt = null;
+
+    window.addEventListener("beforeinstallprompt", (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      installBtn.hidden = false;
+    });
+
+    installBtn.addEventListener("click", async () => {
+      if (!deferredInstallPrompt) return;
+      installBtn.hidden = true;
+      deferredInstallPrompt.prompt();
+      await deferredInstallPrompt.userChoice;
+      deferredInstallPrompt = null;
+    });
+
+    window.addEventListener("appinstalled", () => {
+      installBtn.hidden = true;
+      deferredInstallPrompt = null;
     });
   </script>
 </body>

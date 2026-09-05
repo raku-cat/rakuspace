@@ -12,7 +12,7 @@ import time
 import urllib.request
 from datetime import datetime, timezone
 from functools import wraps
-from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response
+from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response, send_from_directory
 from flask_wtf import CSRFProtect
 from urllib.parse import urlparse
 
@@ -722,6 +722,13 @@ threading.Thread(target=_notify_reconciler, daemon=True).start()
 
 
 # --- Routes ---
+@app.route("/sw.js")
+def service_worker():
+    # Served from the root, not /static/sw.js, so its default scope covers
+    # the whole site (a script's scope defaults to its own directory) and it
+    # can actually control /, /go_live, etc.
+    return send_from_directory(app.static_folder, "sw.js")
+
 @app.route("/")
 def index():
     return render_template("index.html", lite_prefix="")

@@ -13,8 +13,8 @@ browser tab too.
 - No offline caching of app data or assets. The service worker exists only
   to satisfy Chrome/Android's install requirements (a controlling SW is
   mandatory for the install prompt).
-- No changes to `RakuSpace.py`, the database, or auth. This is static
-  assets plus `<link>`/`<script>` tags in existing templates.
+- No changes to the database or auth. `RakuSpace.py` gets one small addition
+  (see Service worker scope below), not touching either.
 - No custom install button on the main site pages; installing the main app
   relies on the browser's native install UI.
 
@@ -35,9 +35,44 @@ open, so two manifests can coexist without any server-side routing changes:
   - Same icons as the main app (same branding, distinct name only)
   - Linked only from `golive.html`, in place of the main manifest
 
-A single site-wide service worker, `static/sw.js`, handles only `install`/
-`activate` — no `fetch` handler, no caching. Registered via a small shared
-script (`static/pwa.js`) included on every page that links a manifest.
+A single site-wide service worker, `static/sw.js`, handles `install`/
+`activate` plus a no-op `fetch` listener (some browsers' install criteria
+check for a registered fetch handler even though this one does no caching
+or interception). Registered via a small shared script (`static/pwa.js`)
+included on every page that links a manifest.
+
+### Service worker scope
+
+A service worker's default scope is the directory it's served from. Serving
+it at `static/sw.js` would scope it to `/static/`, which controls no actual
+page — the install prompt would never fire. `RakuSpace.py` gets one new
+route, `/sw.js`, serving that same file from the site root so its scope
+covers `/` and `/go_live`:
+
+```python
+@app.route("/sw.js")
+def service_worker():
+    return send_from_directory(app.static_folder, "sw.js")
+```
+
+### Scope collision between the two manifests
+
+The main app's `scope: "/"` also covers `/go_live` — manifest scope has no
+exclusion mechanism. So `(display-mode: standalone)` alone can't tell
+"installed Go Live app" apart from "installed main app, currently showing
+`/go_live`" — both are standalone. Visiting Go Live from inside the
+installed main app must keep its normal header/back link; only launching
+the dedicated Go Live app should go chromeless.
+
+Fix: the Go Live manifest's `start_url` carries a marker query param
+(`/go_live?app=1`, `scope` stays `/go_live`). `golive.html` adds a
+`golive-app` class to `<body>` only when that param is present, and the
+chromeless CSS is gated on `body.golive-app` *inside* the
+`(display-mode: standalone)` media query, not on the media query alone.
+
+Both manifests also get an explicit `"id"` (`"/"` and `"/go_live"`) so a
+future `start_url` change doesn't orphan existing installs (identity
+otherwise keys off `start_url`).
 
 ## Icons
 
@@ -87,18 +122,31 @@ this is gated behind that media query.
 
 ## Other pages
 
-Just get the manifest `<link>` tag and the `pwa.js` include added to
-`<head>`/before `</body>`. No visual or behavioral changes otherwise.
+`index.html`, `player.html`, `multistream.html`, `stream.html`, and
+`notifications.html` get the manifest `<link>` tag and the `pwa.js` include
+added to `<head>`. `player_lite.html` is deliberately minimal (no
+`app.css`, just `hls.js`) for lightweight embedding, so it's left out.
 
 ## Testing
 
-No pytest coverage needed — nothing server-side changes. Manual
-verification:
+No pytest coverage needed for the manifests/service worker/CSS themselves;
+`RakuSpace.py`'s new `/sw.js` route has no auth or state, so no new test
+was added for it either — existing tests keep passing.
+
+Service workers and install prompts require a secure context (HTTPS, or
+`localhost`/`127.0.0.1`) — testing against a LAN IP will silently no-op
+both. Manual verification, over `http://localhost:5000` or the real
+deployment:
 1. Install the main app from `index.html` (or any non-golive page) via the
    browser's install UI; confirm it opens standalone at `/`.
 2. On `golive.html`, click "Install as app (PWA)"; confirm it installs as a
-   separately-named, separately-windowed app with `start_url: /go_live`.
+   separately-named, separately-windowed app with `start_url: /go_live?app=1`.
 3. Open the installed Go Live app; confirm only the chromeless retro-window
    is visible, filling the window, with no header/back/install button.
 4. Open `/go_live` in an ordinary browser tab; confirm it looks and behaves
    exactly as it does today.
+5. From inside the installed *main* app, navigate to `/go_live`; confirm it
+   still shows the normal header and back link (not chromeless) — this is
+   the scope-collision case above.
+6. DevTools can override `display-mode` without installing, useful for
+   checking the standalone CSS directly.

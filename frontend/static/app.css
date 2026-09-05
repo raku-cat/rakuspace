@@ -82,7 +82,8 @@ header .header-links {
 
 header a.login-btn,
 header a.golive-link,
-header a.multistream-link {
+header a.multistream-link,
+header button.install-btn {
   position: relative;
   font-size: 0.8em;
   color: var(--ctp-subtext0);
@@ -93,7 +94,14 @@ header a.multistream-link {
 }
 header a.login-btn:hover,
 header a.golive-link:hover,
-header a.multistream-link:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
+header a.multistream-link:hover,
+header button.install-btn:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
+
+header button.install-btn {
+  background: none;
+  font-family: inherit;
+  cursor: pointer;
+}
 
 header .new-badge {
   position: absolute;

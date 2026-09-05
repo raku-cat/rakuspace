@@ -1,0 +1,14 @@
+{
+  "id": "/go_live",
+  "name": "RakuSpace — Go Live",
+  "short_name": "Go Live",
+  "start_url": "/go_live?app=1",
+  "scope": "/go_live",
+  "display": "standalone",
+  "background_color": "#17141d",
+  "theme_color": "#17141d",
+  "icons": [
+    { "src": "/static/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/static/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
