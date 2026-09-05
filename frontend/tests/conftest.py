@@ -32,8 +32,7 @@ def _init_schema(db_path):
                 notify_on_live INTEGER NOT NULL DEFAULT 1,
                 notify_on_offline INTEGER NOT NULL DEFAULT 0,
                 notify_config TEXT,
-                offline_image_url TEXT,
-                chat_channel TEXT
+                offline_image_url TEXT
             )
             """
         )

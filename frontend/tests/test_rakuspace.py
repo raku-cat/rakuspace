@@ -64,35 +64,6 @@ def test_validate_notify_url_accepts_public_host():
     assert rakuspace._validate_notify_url("https://discord.com/api/webhooks/x") is None
 
 
-# --- irc_embed_url ---
-
-def test_irc_embed_url_disabled_without_config(monkeypatch):
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_BASE_URL", "")
-    assert rakuspace.irc_embed_url("#general") is None
-
-
-def test_irc_embed_url_builds_token(monkeypatch):
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_BASE_URL", "https://chat.example.com")
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_SECRET", "shared-secret")
-    url = rakuspace.irc_embed_url("general")
-    assert url is not None
-    assert url.startswith("https://chat.example.com/?channel=%23general&token=")
-
-
-def test_irc_embed_url_deterministic(monkeypatch):
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_BASE_URL", "https://chat.example.com")
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_SECRET", "shared-secret")
-    assert rakuspace.irc_embed_url("#general") == rakuspace.irc_embed_url("#general")
-    assert rakuspace.irc_embed_url("#General") == rakuspace.irc_embed_url("#general")
-
-
-def test_irc_embed_url_rejects_invalid_channel(monkeypatch):
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_BASE_URL", "https://chat.example.com")
-    monkeypatch.setattr(rakuspace, "IRC_EMBED_SECRET", "shared-secret")
-    assert rakuspace.irc_embed_url("has space") is None
-    assert rakuspace.irc_embed_url("") is None
-
-
 # --- _render_vars / notify config ---
 
 def test_render_vars_substitutes_known_keys():

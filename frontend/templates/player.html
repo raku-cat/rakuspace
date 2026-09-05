@@ -5,7 +5,6 @@
   <title>Watching {{ streamname }}</title>
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <script src="{{ url_for('static', filename='ovenplayer/ovenplayer.js') }}"></script>
-  <script src="{{ url_for('static', filename='chat-pane.js') }}"></script>
   <style>
     :root {
       /* Catppuccin Macchiato, mirroring static/app.css. Player pages are
@@ -56,49 +55,7 @@
       height: 100%;
     }
 
-    /* --- chat pane (mirrors multistream.html) --- */
-
-    /* Width is set inline by static/chat-pane.js; this is only the fallback
-       for the moment before that script runs. */
-    .chat-pane {
-      flex: 0 0 auto;
-      width: 340px;
-      height: 100%;
-      min-width: 0;
-    }
-    .chat-pane.hidden { display: none; }
-    /* Too narrow to split -- chat covers the video instead of squeezing it. */
-    .chat-pane.overlay {
-      position: fixed;
-      inset: 0;
-      z-index: 90;
-      width: auto;
-      height: auto;
-    }
-    .chat-pane iframe {
-      display: block;
-      width: 100%;
-      height: 100%;
-      border: 0;
-    }
-
-    .chat-resizer {
-      flex: 0 0 auto;
-      width: 6px;
-      cursor: col-resize;
-      background: var(--ctp-surface0);
-      z-index: 15;
-    }
-    .chat-resizer:hover { background: var(--ctp-surface1); }
-    .chat-resizer.hidden { display: none; }
-    .chat-resizer:focus-visible {
-      outline: 2px solid var(--focus-ring);
-      outline-offset: -2px;
-      background: var(--ctp-surface1);
-    }
-    body.chat-resizing { user-select: none; cursor: col-resize; }
-
-    /* --- chat toggle burger (mirrors multistream.html, minus the dropdown) --- */
+    /* --- global menu burger --- */
 
     .menu-wrap {
       position: fixed;
@@ -279,9 +236,6 @@
         </div>
       </div>
     </div>
-    <div class="chat-pane hidden" id="chat-pane">
-      <iframe id="chat-iframe" src="about:blank"></iframe>
-    </div>
   </div>
 
   <div class="menu-wrap" id="menu-wrap" style="display:none;">
@@ -289,8 +243,6 @@
       <span></span><span></span><span></span>
     </button>
     <div class="global-menu" id="global-menu">
-      <button id="chat-toggle-btn" type="button" style="display:none;">Hide chat</button>
-      <div class="menu-separator" id="menu-separator" style="display:none;"></div>
       <button id="viewer-count-btn" type="button">Viewer count: &mdash;</button>
       <div class="viewer-panel" id="viewer-panel"></div>
     </div>
@@ -303,7 +255,6 @@
     const appName = "{{ OME_APP_NAME }}";
     const streamTitle = "{{ streamtitle }}";
     const offlineImageUrl = {{ (offline_image_url or "") | tojson }};
-    const chatUrl = {{ (chat_url or "") | tojson }};
 
     // Always attempt a connection immediately on page load, regardless of
     // what the SSE live-state feed below ends up saying -- this is what
@@ -502,14 +453,12 @@
       }
     });
 
-    // ---- Global menu (chat toggle + viewer count) ----
+    // ---- Global menu (viewer count) ----
     //
     // Hidden entirely when this page is sitting inside an iframe -- e.g.
     // when this /live/<name> page is loaded as a tile inside /multistream,
-    // that page already has its own chat pane (so a second nested chat
-    // toggle here would be redundant/confusing) and its own viewers are
-    // split across whatever streams are tiled in, so a single number
-    // wouldn't mean much there either. window.top throws instead of
+    // its own viewers are split across whatever streams are tiled in, so a
+    // single number wouldn't mean much there. window.top throws instead of
     // resolving to a different-origin ancestor for a strictly cross-origin
     // embed; either way that means "not the top-level page", so treat it
     // the same as being iframed.
@@ -523,8 +472,6 @@
     if (!inIframe) {
       const menuWrap = document.getElementById("menu-wrap");
       const globalMenuBtn = document.getElementById("global-menu-btn");
-      const chatToggleBtn = document.getElementById("chat-toggle-btn");
-      const menuSeparator = document.getElementById("menu-separator");
       const viewerCountBtn = document.getElementById("viewer-count-btn");
       const viewerPanel = document.getElementById("viewer-panel");
 
@@ -539,73 +486,6 @@
           menuWrap.classList.remove("open");
         }
       });
-
-      // ---- IRC chat toggle (only offered when a channel is configured) ----
-      if (chatUrl) {
-        const chatPane = document.getElementById("chat-pane");
-        const chatIframe = document.getElementById("chat-iframe");
-        const storageKey = `rakuspace-chat-visible-${streamName}`;
-
-        let chatVisible = true; // shown by default when a channel is configured
-        try {
-          const saved = localStorage.getItem(storageKey);
-          if (saved !== null) chatVisible = saved === "1";
-        } catch (err) {
-          // localStorage unavailable (private browsing etc.) -- fall back to the default.
-        }
-
-        const sizer = RakuChatPane.create({
-          layout: document.getElementById("layout"),
-          pane: chatPane,
-          storageKey: "rakuspace-chat-width",
-          onNarrowChange: () => {
-            // Opening chat over the video is only ever an explicit choice, so
-            // dropping into narrow mode always starts from closed.
-            narrowChatOpen = false;
-            applyChatVisibility();
-          },
-        });
-
-        // On a narrow viewport chat covers the video, so the saved "chat is
-        // on" preference from a wide window shouldn't silently hide the
-        // stream on load -- it takes a deliberate toggle each time instead.
-        let narrowChatOpen = false;
-        const chatShown = () => (sizer.isNarrow() ? narrowChatOpen : chatVisible);
-
-        let chatLoaded = false;
-        function applyChatVisibility() {
-          const shown = chatShown();
-          chatPane.classList.toggle("hidden", !shown);
-          sizer.update(shown);
-          chatToggleBtn.textContent = shown ? "Hide chat" : "Show chat";
-          if (shown && !chatLoaded) {
-            chatIframe.src = chatUrl;
-            chatLoaded = true;
-          } else if (!shown && chatLoaded) {
-            chatIframe.src = "about:blank";
-            chatLoaded = false;
-          }
-        }
-
-        chatToggleBtn.style.display = "";
-        menuSeparator.style.display = "";
-        applyChatVisibility();
-
-        chatToggleBtn.addEventListener("click", () => {
-          if (sizer.isNarrow()) {
-            narrowChatOpen = !narrowChatOpen;
-            applyChatVisibility();
-            return;
-          }
-          chatVisible = !chatVisible;
-          applyChatVisibility();
-          try {
-            localStorage.setItem(storageKey, chatVisible ? "1" : "0");
-          } catch (err) {
-            // ignore -- just won't persist across reloads
-          }
-        });
-      }
 
       // ---- Viewer count ----
       //

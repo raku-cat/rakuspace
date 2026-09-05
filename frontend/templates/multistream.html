@@ -199,48 +199,6 @@
   .drop-bottom { left: 0; bottom: 0; width: 100%; height: 50%; }
   .drop-center { left: 12%; top: 12%; width: 76%; height: 76%; }
 
-  /* --- chat pane --- */
-
-  /* Width is set inline by static/chat-pane.js; this is only the fallback
-     for the moment before that script runs. */
-  .chat-pane {
-    flex: 0 0 auto;
-    width: 340px;
-    height: 100%;
-    min-width: 0;
-  }
-  .chat-pane.hidden { display: none; }
-  /* Too narrow to split -- chat covers the tiles instead of squeezing them. */
-  .chat-pane.overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 90;
-    width: auto;
-    height: auto;
-  }
-  .chat-pane iframe {
-    display: block;
-    width: 100%;
-    height: 100%;
-    border: 0;
-  }
-
-  .chat-resizer {
-    flex: 0 0 auto;
-    width: 6px;
-    cursor: col-resize;
-    background: var(--ctp-surface0);
-    z-index: 15;
-  }
-  .chat-resizer:hover { background: var(--ctp-surface1); }
-  .chat-resizer.hidden { display: none; }
-  .chat-resizer:focus-visible {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: -2px;
-    background: var(--ctp-surface1);
-  }
-  body.chat-resizing { user-select: none; cursor: col-resize; }
-
   /* --- global menu --- */
 
   .menu-wrap {
@@ -326,10 +284,6 @@
   <div class="video-pane">
     <div id="video-root"></div>
   </div>
-  <div class="chat-pane" id="chat-pane">
-    <!-- Chat embed intentionally left blank for now; reserved for future use. -->
-    <iframe id="chat-iframe" src="about:blank"></iframe>
-  </div>
 </div>
 
 <div class="menu-wrap" id="menu-wrap">
@@ -338,24 +292,15 @@
   </button>
   <div class="global-menu" id="global-menu">
     <button id="menu-add-stream" type="button">Add stream</button>
-    <button id="menu-toggle-chat" type="button">Hide chat</button>
     <button id="menu-toggle-edit" type="button">Edit layout</button>
     <button id="menu-reset-layout" type="button">Reset layout</button>
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='chat-pane.js') }}"></script>
 <script>
 (function () {
   // The base URL used to build each stream's iframe src: LIVE_BASE + name.
   const LIVE_BASE_URL = '{{ lite_prefix }}/live/';
-
-  // Pre-signed IRC chat embed URL for the multiplexer's chat pane, or '' if
-  // chat embeds aren't configured (blank IRC_EMBED_* config) or no channel
-  // is set for this multiplexer. When absent the pane and its menu toggle
-  // are hidden entirely rather than showing a dead pane.
-  const CHAT_URL = {{ (chat_url or "") | tojson }};
-  let chatLoaded = false;
 
   let nextId = 1;
   function makeLeaf(size) {
@@ -366,33 +311,12 @@
   }
 
   const state = {
-    chatVisible: true,
     editMode: false,
     root: makeSplit('row', [makeLeaf(1)]),
   };
 
   let dragNode = null;
   let resizeState = null;
-
-  // ---- chat pane sizing ----
-  //
-  // On a narrow viewport chat covers the tiles rather than splitting with
-  // them, so state.chatVisible (the remembered preference from a normal
-  // window) shouldn't silently bury the streams on load -- opening chat
-  // there is a deliberate per-session act instead.
-  let narrowChatOpen = false;
-  const chatSizer = RakuChatPane.create({
-    layout: document.getElementById('layout'),
-    pane: document.getElementById('chat-pane'),
-    storageKey: 'irc-embed-stream-chat-width',
-    onNarrowChange: () => {
-      narrowChatOpen = false;
-      render();
-    },
-  });
-  function chatShown() {
-    return chatSizer.isNarrow() ? narrowChatOpen : state.chatVisible;
-  }
 
   // Persistent cache of leaf DOM elements keyed by node id, reused across
   // renders so that live-loaded stream iframes are never torn down and
@@ -442,7 +366,6 @@
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: 1,
-        chatVisible: state.chatVisible,
         root: serializeNode(state.root),
       }));
     } catch (err) {
@@ -457,7 +380,6 @@
       const data = JSON.parse(raw);
       if (!data || data.version !== 1 || !data.root) return;
       state.root = deserializeNode(data.root);
-      state.chatVisible = data.chatVisible !== false;
       nextId = maxId(state.root, 0) + 1;
     } catch (err) {
       console.warn('[stream] failed to load saved layout, starting fresh', err);
@@ -468,7 +390,6 @@
     if (!confirm('Reset the stream layout? This removes all added streams.')) return;
     leafCache.clear();
     state.root = makeSplit('row', [makeLeaf(1)]);
-    state.chatVisible = true;
     render();
   }
 
@@ -673,33 +594,6 @@
 
     document.body.classList.toggle('edit-mode', state.editMode);
 
-    const chatPane = document.getElementById('chat-pane');
-    const chatToggleBtn = document.getElementById('menu-toggle-chat');
-    if (!CHAT_URL) {
-      // No channel configured for this multiplexer -- hide the pane and its
-      // menu toggle entirely instead of showing a dead, always-blank pane.
-      chatPane.classList.add('hidden');
-      chatToggleBtn.style.display = 'none';
-      chatSizer.update(false);
-    } else {
-      const shown = chatShown();
-      chatPane.classList.toggle('hidden', !shown);
-      chatSizer.update(shown);
-      chatToggleBtn.style.display = '';
-      chatToggleBtn.textContent = shown ? 'Hide chat' : 'Show chat';
-
-      // Lazy load/unload: only load the iframe once shown, and unload it
-      // (back to about:blank) once hidden, rather than keeping an idle chat
-      // connection open behind a hidden pane.
-      const chatIframe = document.getElementById('chat-iframe');
-      if (shown && !chatLoaded) {
-        chatIframe.src = CHAT_URL;
-        chatLoaded = true;
-      } else if (!shown && chatLoaded) {
-        chatIframe.src = 'about:blank';
-        chatLoaded = false;
-      }
-    }
     document.getElementById('menu-toggle-edit').textContent = state.editMode ? 'Exit edit mode' : 'Edit layout';
 
     saveState();
@@ -899,15 +793,6 @@
   });
   document.getElementById('menu-add-stream').addEventListener('click', () => {
     addStream();
-    menuWrap.classList.remove('open');
-  });
-  document.getElementById('menu-toggle-chat').addEventListener('click', () => {
-    if (chatSizer.isNarrow()) {
-      narrowChatOpen = !narrowChatOpen;
-    } else {
-      state.chatVisible = !state.chatVisible;
-    }
-    render();
     menuWrap.classList.remove('open');
   });
   document.getElementById('menu-toggle-edit').addEventListener('click', () => {
