@@ -163,7 +163,7 @@ bool obs_module_load(void)
 	obs_frontend_add_event_callback(on_frontend_event, nullptr);
 	obs_frontend_add_tools_menu_item("RakuSpace Settings",
 					[](void *) { rakuspace::open_settings_dialog(); }, nullptr);
-	blog(LOG_INFO, "[rakuspace-obs] loaded");
+	blog(LOG_INFO, "[rakuspace-obs] loaded, build %s", RAKUSPACE_GIT_HASH);
 	return true;
 }
 

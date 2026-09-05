@@ -4,6 +4,20 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/common/bootstrap.cmake" NO_POLICY_SCO
 
 project(${_name} VERSION ${_version})
 
+# Short git hash baked into the binary and logged on load, so a running
+# instance can be matched back to a source tree with `git rev-parse
+# --short=10 HEAD` instead of guessing from file dates.
+execute_process(
+  COMMAND git rev-parse --short=10 HEAD
+  WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+  OUTPUT_VARIABLE RAKUSPACE_GIT_HASH
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+  ERROR_QUIET
+)
+if(NOT RAKUSPACE_GIT_HASH)
+  set(RAKUSPACE_GIT_HASH "unknown")
+endif()
+
 option(ENABLE_FRONTEND_API "Use obs-frontend-api for UI functionality" OFF)
 option(ENABLE_QT "Use Qt functionality" OFF)
 
@@ -43,6 +57,8 @@ if(ENABLE_QT)
 endif()
 
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE src/plugin-main.cpp src/discord-rpc.cpp src/rakuspace-dock.cpp src/rakuspace-http.cpp src/rakuspace-config-store.cpp src/rakuspace-output.cpp)
+
+target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE RAKUSPACE_GIT_HASH="${RAKUSPACE_GIT_HASH}")
 
 target_compile_features(${CMAKE_PROJECT_NAME} PRIVATE cxx_std_17)
 set_target_properties(${CMAKE_PROJECT_NAME} PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
