@@ -400,3 +400,85 @@ def test_live_events_registers_and_unregisters_viewer(client):
         gen.close()
 
     assert "some-streamer" not in rakuspace._viewers
+
+
+# --- case-insensitive usernames ---
+
+def _add_user(db_path, username, streamkey="k", title=None):
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "INSERT INTO users (username, streamkey, stream_title) VALUES (?, ?, ?)",
+        (username, streamkey, title),
+    )
+    conn.commit()
+    conn.close()
+
+
+@pytest.mark.parametrize("typed", ["Raku", "RAku", "rakU", "RAKU"])
+def test_play_stream_redirects_other_case_to_stored_name(client, db_path, typed):
+    _add_user(db_path, "raku")
+    resp = client.get(f"/live/{typed}")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/live/raku")
+
+
+def test_play_stream_exact_case_renders(client, db_path):
+    _add_user(db_path, "raku", title="hi")
+    resp = client.get("/live/raku")
+    assert resp.status_code == 200
+    assert b"hi" in resp.data
+
+
+def test_play_stream_redirect_keeps_query_string(client, db_path):
+    _add_user(db_path, "raku")
+    resp = client.get("/live/Raku?muted=1")
+    assert resp.headers["Location"].endswith("/live/raku?muted=1")
+
+
+def test_play_stream_lite_redirects_other_case(client, db_path):
+    _add_user(db_path, "raku")
+    resp = client.get("/lite/live/RAKU")
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/lite/live/raku")
+
+
+def test_api_check_is_case_insensitive(client, db_path):
+    _add_user(db_path, "raku", title="hi")
+    resp = client.get("/api/check/RaKu")
+    assert resp.get_json() == {"known": True, "title": "hi"}
+
+
+def test_canonical_username_prefers_exact_match(client, db_path):
+    # Older DBs may already hold two rows differing only by case.
+    _add_user(db_path, "raku")
+    _add_user(db_path, "Raku")
+    with rakuspace.app.app_context():
+        assert rakuspace._canonical_username("Raku") == "Raku"
+        assert rakuspace._canonical_username("raku") == "raku"
+        assert rakuspace._canonical_username("RAKU") in ("raku", "Raku")
+        assert rakuspace._canonical_username("nobody") is None
+
+
+def test_auth_header_other_case_reuses_existing_user(client, db_path):
+    _add_user(db_path, "raku", streamkey="thekey")
+    resp = client.get("/stream_info", headers={"X-Forwarded-User": "Raku"})
+    assert resp.status_code == 200
+    assert b"thekey" in resp.data
+    conn = sqlite3.connect(db_path)
+    count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    conn.close()
+    assert count == 1
+
+
+def test_live_events_other_case_shares_state_with_stored_name(client, db_path):
+    _add_user(db_path, "raku")
+    rakuspace._set_live_state("raku", "live")
+    try:
+        with rakuspace.app.test_request_context("/api/live/RAKU/events"):
+            gen = rakuspace.live_events("RAKU").response
+            assert next(gen) == "event: state\ndata: live\n\n"
+            next(gen)
+            assert rakuspace._viewer_snapshot("raku")[0] == 1
+            gen.close()
+    finally:
+        rakuspace._set_live_state("raku", "offline")

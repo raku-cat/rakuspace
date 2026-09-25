@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from functools import wraps
 from flask import Flask, request, g, render_template, redirect, url_for, jsonify, abort, Response, send_from_directory
 from flask_wtf import CSRFProtect
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 app = Flask(__name__)
 app.config.from_pyfile('rakuspace.cfg')
@@ -142,6 +142,20 @@ def get_or_create_userkey(username, regen=False):
 
     return userid, streamkey, row
 
+def _canonical_username(name):
+    """Returns the username as stored in the DB for a case-insensitive match
+    on `name`, or None if there's no such user. Upstream auth (LDAP) and
+    people typing /live/<name> don't agree on case, but OME's stream path is
+    the stored username verbatim, so everything keys off that spelling. An
+    exact-case row wins if an older DB has several rows differing by case."""
+    row = get_db().execute(
+        "SELECT username FROM users WHERE username=? COLLATE NOCASE "
+        "ORDER BY username=? DESC LIMIT 1",
+        (name, name),
+    ).fetchone()
+    return row["username"] if row else None
+
+
 def generate_stream_key(length=30):
     alphabet = string.ascii_letters + string.digits  # a-zA-Z0-9
     return ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -158,7 +172,7 @@ def _resolve_username():
         or request.headers.get("Remote-User")
     )
     if header_username:
-        return header_username
+        return _canonical_username(header_username) or header_username
 
     # Deliberately not real auth: the password half is decoded and thrown
     # away, so *any* password authenticates as the given username. This
@@ -172,7 +186,7 @@ def _resolve_username():
             try:
                 userpass = base64.b64decode(auth.split(" ")[1]).decode()
                 basicauth_username, _ = userpass.split(":", 1)
-                return basicauth_username
+                return _canonical_username(basicauth_username) or basicauth_username
             except Exception:
                 pass
     return None
@@ -768,7 +782,10 @@ def go_live(username):
 def check_stream(streamname):
     db = get_db()
     cur = db.cursor()
-    cur.execute("SELECT stream_title FROM users WHERE username=?", (streamname,))
+    cur.execute(
+        "SELECT stream_title FROM users WHERE username=? COLLATE NOCASE ORDER BY username=? DESC LIMIT 1",
+        (streamname, streamname),
+    )
     row = cur.fetchone()
     title = row["stream_title"] if row is not None else None
     return jsonify({"known": row is not None, "title": title})
@@ -797,6 +814,7 @@ def live_events(streamname):
     viewer (see _register_viewer's docstring above for why), and a "viewers"
     event is pushed alongside "state" whenever the count or named list
     changes."""
+    streamname = _canonical_username(streamname) or streamname
     conn_id = secrets.token_hex(8)
     viewer_username = _resolve_username()
 
@@ -841,8 +859,23 @@ def live_events(streamname):
     )
 
 
+def _redirect_to_canonical(streamname, prefix):
+    """Redirects /live/<name> to the stored spelling of the username when
+    they differ only by case, so the player asks OME for the right stream."""
+    canonical = _canonical_username(streamname)
+    if canonical is None or canonical == streamname:
+        return None
+    target = f"{prefix}/live/{quote(canonical, safe='')}"
+    if request.query_string:
+        target += "?" + request.query_string.decode()
+    return redirect(target)
+
+
 @app.route("/live/<streamname>")
 def play_stream(streamname):
+    resp = _redirect_to_canonical(streamname, "")
+    if resp:
+        return resp
     db = get_db()
     with db:
         cur = db.cursor()
@@ -864,6 +897,9 @@ def play_stream(streamname):
 
 @app.route("/lite/live/<streamname>")
 def play_stream_lite(streamname):
+    resp = _redirect_to_canonical(streamname, "/lite")
+    if resp:
+        return resp
     db = get_db()
     with db:
         cur = db.cursor()
