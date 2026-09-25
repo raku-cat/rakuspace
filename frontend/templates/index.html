@@ -94,12 +94,23 @@
     const recentList = document.getElementById("recent-list");
 
     // --- Recent streams (localStorage) ---
+    // Stream names are case insensitive, so dedupe ignoring case (also
+    // collapses older lists that logged "raku" and "Raku" separately).
+    function dedupe(list) {
+      const seen = new Set();
+      return list.filter(n => {
+        const key = n.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
     function getRecent() {
-      try { return JSON.parse(localStorage.getItem("recentStreams") || "[]"); }
+      try { return dedupe(JSON.parse(localStorage.getItem("recentStreams") || "[]")); }
       catch { return []; }
     }
     function saveRecent(name) {
-      let list = getRecent().filter(n => n !== name);
+      let list = getRecent().filter(n => n.toLowerCase() !== name.toLowerCase());
       list.unshift(name);
       list = list.slice(0, 5);
       localStorage.setItem("recentStreams", JSON.stringify(list));
@@ -148,13 +159,18 @@
     });
 
     // --- Form submit ---
-    document.getElementById("stream-form").addEventListener("submit", function(e) {
+    document.getElementById("stream-form").addEventListener("submit", async function(e) {
       e.preventDefault();
-      const name = input.value.trim();
-      if (name) {
-        saveRecent(name);
-        window.location.href = LIVE_PREFIX + "/live/" + encodeURIComponent(name);
-      }
+      let name = input.value.trim();
+      if (!name) return;
+      // Save the streamer's stored spelling when known, not whatever was typed.
+      try {
+        const res = await fetch("/api/check/" + encodeURIComponent(name));
+        const data = await res.json();
+        if (data.name) name = data.name;
+      } catch {}
+      saveRecent(name);
+      window.location.href = LIVE_PREFIX + "/live/" + encodeURIComponent(name);
     });
   </script>
 </body>

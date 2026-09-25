@@ -783,12 +783,13 @@ def check_stream(streamname):
     db = get_db()
     cur = db.cursor()
     cur.execute(
-        "SELECT stream_title FROM users WHERE username=? COLLATE NOCASE ORDER BY username=? DESC LIMIT 1",
+        "SELECT username, stream_title FROM users WHERE username=? COLLATE NOCASE ORDER BY username=? DESC LIMIT 1",
         (streamname, streamname),
     )
     row = cur.fetchone()
     title = row["stream_title"] if row is not None else None
-    return jsonify({"known": row is not None, "title": title})
+    name = row["username"] if row is not None else None
+    return jsonify({"known": row is not None, "title": title, "name": name})
 
 
 def _viewers_event(count, named, viewer_username):

@@ -132,7 +132,7 @@ def test_index_route(client):
 def test_api_check_unknown_stream(client):
     resp = client.get("/api/check/nobody")
     assert resp.status_code == 200
-    assert resp.get_json() == {"known": False, "title": None}
+    assert resp.get_json() == {"known": False, "title": None, "name": None}
 
 
 def test_api_check_known_stream(client, db_path):
@@ -142,7 +142,7 @@ def test_api_check_known_stream(client, db_path):
     conn.close()
 
     resp = client.get("/api/check/alice")
-    assert resp.get_json() == {"known": True, "title": None}
+    assert resp.get_json() == {"known": True, "title": None, "name": "alice"}
 
 
 def test_api_check_returns_stream_title(client, db_path):
@@ -154,7 +154,7 @@ def test_api_check_returns_stream_title(client, db_path):
     conn.close()
 
     resp = client.get("/api/check/bob")
-    assert resp.get_json() == {"known": True, "title": "Perfect Dark 100%"}
+    assert resp.get_json() == {"known": True, "title": "Perfect Dark 100%", "name": "bob"}
 
 
 def test_play_stream_unknown_streamer_still_renders(client):
@@ -445,7 +445,7 @@ def test_play_stream_lite_redirects_other_case(client, db_path):
 def test_api_check_is_case_insensitive(client, db_path):
     _add_user(db_path, "raku", title="hi")
     resp = client.get("/api/check/RaKu")
-    assert resp.get_json() == {"known": True, "title": "hi"}
+    assert resp.get_json() == {"known": True, "title": "hi", "name": "raku"}
 
 
 def test_canonical_username_prefers_exact_match(client, db_path):
