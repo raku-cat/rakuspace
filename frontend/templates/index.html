@@ -93,24 +93,31 @@
     const recentDiv = document.getElementById("recent");
     const recentList = document.getElementById("recent-list");
 
-    // --- Recent streams (localStorage) ---
-    // Stream names are case insensitive, so dedupe ignoring case (also
-    // collapses older lists that logged "raku" and "Raku" separately).
-    function dedupe(list) {
-      const seen = new Set();
-      return list.filter(n => {
-        const key = n.toLowerCase();
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-      });
+    // Stream names are case insensitive and always lowercase server side,
+    // so normalize anything typed before using it.
+    function normalizeName(raw) {
+      return raw.trim().toLowerCase();
     }
+    // Resolves true/false for a known/unknown streamer, null if the check failed.
+    async function checkStream(name) {
+      try {
+        const res = await fetch("/api/check/" + encodeURIComponent(name));
+        return (await res.json()).known;
+      } catch { return null; }
+    }
+
+    // --- Recent streams (localStorage) ---
     function getRecent() {
-      try { return dedupe(JSON.parse(localStorage.getItem("recentStreams") || "[]")); }
+      try {
+        // Lowercase and dedupe, which also cleans up older lists that logged
+        // "raku" and "Raku" separately.
+        const list = JSON.parse(localStorage.getItem("recentStreams") || "[]").map(n => n.toLowerCase());
+        return [...new Set(list)];
+      }
       catch { return []; }
     }
     function saveRecent(name) {
-      let list = getRecent().filter(n => n.toLowerCase() !== name.toLowerCase());
+      let list = getRecent().filter(n => n !== name);
       list.unshift(name);
       list = list.slice(0, 5);
       localStorage.setItem("recentStreams", JSON.stringify(list));
@@ -138,38 +145,32 @@
     // --- Stream name validation ---
     let debounceTimer;
     input.addEventListener("input", function() {
-      const name = input.value.trim();
+      const name = normalizeName(input.value);
       clearTimeout(debounceTimer);
       hint.textContent = "";
       hint.className = "";
       if (!name) return;
       debounceTimer = setTimeout(async () => {
-        try {
-          const res = await fetch("/api/check/" + encodeURIComponent(name));
-          const data = await res.json();
-          if (data.known) {
-            hint.textContent = "✓ known streamer";
-            hint.className = "known";
-          } else {
-            hint.textContent = "✗ unknown stream name";
-            hint.className = "unknown";
-          }
-        } catch { hint.textContent = ""; }
+        const known = await checkStream(name);
+        if (known === null) {
+          hint.textContent = "";
+        } else if (known) {
+          hint.textContent = "✓ known streamer";
+          hint.className = "known";
+        } else {
+          hint.textContent = "✗ unknown stream name";
+          hint.className = "unknown";
+        }
       }, 400);
     });
 
     // --- Form submit ---
     document.getElementById("stream-form").addEventListener("submit", async function(e) {
       e.preventDefault();
-      let name = input.value.trim();
+      const name = normalizeName(input.value);
       if (!name) return;
-      // Save the streamer's stored spelling when known, not whatever was typed.
-      try {
-        const res = await fetch("/api/check/" + encodeURIComponent(name));
-        const data = await res.json();
-        if (data.name) name = data.name;
-      } catch {}
-      saveRecent(name);
+      // Only known streamers make it into recent streams.
+      if (await checkStream(name)) saveRecent(name);
       window.location.href = LIVE_PREFIX + "/live/" + encodeURIComponent(name);
     });
   </script>

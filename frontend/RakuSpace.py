@@ -106,8 +106,38 @@ def ensure_schema():
             if column not in existing:
                 db.execute(f"ALTER TABLE users ADD COLUMN {column} {ddl_type}")
         db.commit()
+        lowercase_usernames(db)
     finally:
         db.close()
+
+
+def normalize_username(name):
+    """Usernames are case insensitive, so every name coming in (auth headers,
+    URLs, form input) is lowercased before it touches the DB or in-memory
+    state. OME's stream path is the stored username, so it's lowercase too."""
+    return name.lower()
+
+
+def lowercase_usernames(db):
+    """Usernames are always lowercase (see normalize_username), so lowercase
+    any stored before that was enforced. A row whose lowercase form is
+    already taken is left alone and logged for a manual merge; it's
+    unreachable until then."""
+    rows = db.execute("SELECT userid, username FROM users").fetchall()
+    for userid, username in rows:
+        lowered = normalize_username(username)
+        if lowered == username:
+            continue
+        try:
+            db.execute("UPDATE users SET username=? WHERE userid=?", (lowered, userid))
+            db.commit()
+            log.info("lowercased username %r to %r", username, lowered)
+        except sqlite3.IntegrityError:
+            db.rollback()
+            log.warning(
+                "can't lowercase username %r (userid %s): %r already exists, merge them by hand",
+                username, userid, lowered,
+            )
 
 
 ensure_schema()
@@ -142,20 +172,6 @@ def get_or_create_userkey(username, regen=False):
 
     return userid, streamkey, row
 
-def _canonical_username(name):
-    """Returns the username as stored in the DB for a case-insensitive match
-    on `name`, or None if there's no such user. Upstream auth (LDAP) and
-    people typing /live/<name> don't agree on case, but OME's stream path is
-    the stored username verbatim, so everything keys off that spelling. An
-    exact-case row wins if an older DB has several rows differing by case."""
-    row = get_db().execute(
-        "SELECT username FROM users WHERE username=? COLLATE NOCASE "
-        "ORDER BY username=? DESC LIMIT 1",
-        (name, name),
-    ).fetchone()
-    return row["username"] if row else None
-
-
 def generate_stream_key(length=30):
     alphabet = string.ascii_letters + string.digits  # a-zA-Z0-9
     return ''.join(secrets.choice(alphabet) for _ in range(length))
@@ -172,7 +188,7 @@ def _resolve_username():
         or request.headers.get("Remote-User")
     )
     if header_username:
-        return _canonical_username(header_username) or header_username
+        return normalize_username(header_username)
 
     # Deliberately not real auth: the password half is decoded and thrown
     # away, so *any* password authenticates as the given username. This
@@ -186,7 +202,7 @@ def _resolve_username():
             try:
                 userpass = base64.b64decode(auth.split(" ")[1]).decode()
                 basicauth_username, _ = userpass.split(":", 1)
-                return _canonical_username(basicauth_username) or basicauth_username
+                return normalize_username(basicauth_username)
             except Exception:
                 pass
     return None
@@ -782,14 +798,10 @@ def go_live(username):
 def check_stream(streamname):
     db = get_db()
     cur = db.cursor()
-    cur.execute(
-        "SELECT username, stream_title FROM users WHERE username=? COLLATE NOCASE ORDER BY username=? DESC LIMIT 1",
-        (streamname, streamname),
-    )
+    cur.execute("SELECT stream_title FROM users WHERE username=?", (normalize_username(streamname),))
     row = cur.fetchone()
     title = row["stream_title"] if row is not None else None
-    name = row["username"] if row is not None else None
-    return jsonify({"known": row is not None, "title": title, "name": name})
+    return jsonify({"known": row is not None, "title": title})
 
 
 def _viewers_event(count, named, viewer_username):
@@ -815,7 +827,7 @@ def live_events(streamname):
     viewer (see _register_viewer's docstring above for why), and a "viewers"
     event is pushed alongside "state" whenever the count or named list
     changes."""
-    streamname = _canonical_username(streamname) or streamname
+    streamname = normalize_username(streamname)
     conn_id = secrets.token_hex(8)
     viewer_username = _resolve_username()
 
@@ -860,13 +872,13 @@ def live_events(streamname):
     )
 
 
-def _redirect_to_canonical(streamname, prefix):
-    """Redirects /live/<name> to the stored spelling of the username when
-    they differ only by case, so the player asks OME for the right stream."""
-    canonical = _canonical_username(streamname)
-    if canonical is None or canonical == streamname:
+def _redirect_to_lowercase(streamname, prefix):
+    """Redirects /live/<name> to its lowercase form, so the URL, the player's
+    OME stream path and anything saved from the page all use one spelling."""
+    lowered = normalize_username(streamname)
+    if lowered == streamname:
         return None
-    target = f"{prefix}/live/{quote(canonical, safe='')}"
+    target = f"{prefix}/live/{quote(lowered, safe='')}"
     if request.query_string:
         target += "?" + request.query_string.decode()
     return redirect(target)
@@ -874,7 +886,7 @@ def _redirect_to_canonical(streamname, prefix):
 
 @app.route("/live/<streamname>")
 def play_stream(streamname):
-    resp = _redirect_to_canonical(streamname, "")
+    resp = _redirect_to_lowercase(streamname, "")
     if resp:
         return resp
     db = get_db()
@@ -898,7 +910,7 @@ def play_stream(streamname):
 
 @app.route("/lite/live/<streamname>")
 def play_stream_lite(streamname):
-    resp = _redirect_to_canonical(streamname, "/lite")
+    resp = _redirect_to_lowercase(streamname, "/lite")
     if resp:
         return resp
     db = get_db()

@@ -345,7 +345,7 @@
 
   function deserializeNode(data) {
     if (data.type === 'leaf') {
-      return { type: 'leaf', id: data.id, name: data.name || null, justAdded: false, size: data.size || 1 };
+      return { type: 'leaf', id: data.id, name: data.name ? data.name.toLowerCase() : null, justAdded: false, size: data.size || 1 };
     }
     return {
       type: 'split',
@@ -756,7 +756,8 @@
     form.addEventListener('click', (e) => e.stopPropagation());
     form.addEventListener('submit', (e) => {
       e.preventDefault();
-      const val = input.value.trim();
+      // Stream names are case insensitive and always lowercase server side.
+      const val = input.value.trim().toLowerCase();
       if (!val) return;
       node.name = val;
       node.justAdded = true;
