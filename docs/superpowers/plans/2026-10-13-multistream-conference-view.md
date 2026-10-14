@@ -19,8 +19,8 @@
 - No full tile overlays over iframes. Tile chrome is only a pin button and a close button.
 - New view localStorage key: `rakuspace-multistream-v1`. Advanced keeps `irc-embed-stream-layout-v1`.
 - Stream names trimmed and lowercased on submit.
-- Run tests from `frontend/` with `python_modules/bin/python -m pytest tests/ -q`.
-- Commits are made as Claude per the `sign-commits` skill (the controller handles this; implementers may commit with plain `git commit` if not told otherwise).
+- Run tests with `cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python -m pytest tests/ -q`. Use the explicit `cd` in every command; repo root is `/home/glizzy/Projects/rakuspace`.
+- Implementers do NOT commit. Leave changes in the working tree; the controller reviews and makes a signed commit per task (`sign-commits` skill).
 
 ## File Structure
 
@@ -86,13 +86,13 @@ def test_multistream_advanced_other_values_ignored(client):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run (from `frontend/`): `python_modules/bin/python -m pytest tests/test_rakuspace.py -q -k multistream`
+Run: `cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python -m pytest tests/test_rakuspace.py -q -k multistream`
 Expected: FAIL. `menu-toggle-view` not found, advanced link not found.
 
 - [ ] **Step 3: Rename the template**
 
 ```bash
-git mv frontend/templates/multistream.html frontend/templates/multistream_advanced.html
+cd /home/glizzy/Projects/rakuspace && git mv frontend/templates/multistream.html frontend/templates/multistream_advanced.html
 ```
 
 - [ ] **Step 4: Add the Simple mode link to the advanced menu**
@@ -220,15 +220,12 @@ def multistream_lite():
 
 - [ ] **Step 7: Run tests to verify they pass**
 
-Run (from `frontend/`): `python_modules/bin/python -m pytest tests/ -q`
+Run: `cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python -m pytest tests/ -q`
 Expected: all pass, including the 5 new multistream cases.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 8: Hand off for commit**
 
-```bash
-git add frontend/templates/multistream.html frontend/templates/multistream_advanced.html frontend/RakuSpace.py frontend/tests/test_rakuspace.py
-git commit -m "Move split multistream viewer to advanced mode"
-```
+Do not commit. Report done; the controller commits as "Move split multistream viewer to advanced mode".
 
 ---
 
@@ -938,17 +935,17 @@ Replace `frontend/templates/multistream.html` with:
 
 - [ ] **Step 2: Syntax check the script**
 
-Run (from `frontend/`):
+Run:
 
 ```bash
-python_modules/bin/python - <<'EOF'
+cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python - <<'EOF'
 import re, pathlib
 src = pathlib.Path("templates/multistream.html").read_text()
 scripts = re.findall(r"<script>(.*?)</script>", src, re.S)
 assert len(scripts) == 1, len(scripts)
-pathlib.Path("/tmp/ms_check.js").write_text(scripts[0])
+pathlib.Path("/tmp/claude-1000/-home-glizzy-Projects-rakuspace/e2ffc1f2-34c6-42f7-ac8f-af28810b410a/scratchpad/ms_check.js").write_text(scripts[0])
 EOF
-node --check /tmp/ms_check.js && echo OK
+node --check /tmp/claude-1000/-home-glizzy-Projects-rakuspace/e2ffc1f2-34c6-42f7-ac8f-af28810b410a/scratchpad/ms_check.js && echo OK
 ```
 
 Expected: `OK`. (The `{{ lite_prefix }}` inside a string literal is valid JS as is.)
@@ -978,15 +975,12 @@ Expected: cols of `1, 2, 2, 3, 4` for n of `1, 2, 4, 5, 10`, every `w` positive,
 
 - [ ] **Step 4: Run the test suite**
 
-Run (from `frontend/`): `python_modules/bin/python -m pytest tests/ -q`
+Run: `cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python -m pytest tests/ -q`
 Expected: all pass.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 5: Hand off for commit**
 
-```bash
-git add frontend/templates/multistream.html
-git commit -m "Add conference style multistream view"
-```
+Do not commit. Report done; the controller commits as "Add conference style multistream view".
 
 ---
 
@@ -1031,19 +1025,16 @@ with:
 
 - [ ] **Step 3: Run tests**
 
-Run (from `frontend/`): `python_modules/bin/python -m pytest tests/ -q`
+Run: `cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python -m pytest tests/ -q`
 Expected: all pass.
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 4: Hand off for commit**
 
-```bash
-git add CLAUDE.md frontend/README.md
-git commit -m "Document multistream simple and advanced modes"
-```
+Do not commit. Report done; the controller commits as "Document multistream simple and advanced modes".
 
 - [ ] **Step 5: Manual browser check (controller and user)**
 
-Start the dev server from `frontend/` (`python_modules/bin/python RakuSpace.py`) and open `/multistream`:
+Start the dev server (`cd /home/glizzy/Projects/rakuspace/frontend && python_modules/bin/python RakuSpace.py`) and open `/multistream`:
 
 - Fresh visit: name form centered, no Cancel button.
 - Add 1 stream: fills the page at 16:9, no strip.
