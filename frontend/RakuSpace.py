@@ -768,13 +768,18 @@ def index():
 def index_lite():
     return render_template("index.html", lite_prefix="/lite")
 
+def _render_multistream(lite_prefix):
+    # ?advanced=1 keeps the old free form split layout around.
+    template = "multistream_advanced.html" if request.args.get("advanced") == "1" else "multistream.html"
+    return render_template(template, lite_prefix=lite_prefix)
+
 @app.route("/multistream")
 def multistream():
-    return render_template("multistream.html", lite_prefix="")
+    return _render_multistream("")
 
 @app.route("/lite/multistream")
 def multistream_lite():
-    return render_template("multistream.html", lite_prefix="/lite")
+    return _render_multistream("/lite")
 
 @app.route("/go_live")
 @require_auth

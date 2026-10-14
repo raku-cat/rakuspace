@@ -23,7 +23,7 @@ The app wont do much on its own, it has the following pages:
  - `/live/<streamname>`
   - Public OvenPlayer view for a given stream name, with an offline image if that streamer has configured one.
  - `/multistream`
-  - Multi-tile stream multiplexer.
+  - Multi-tile stream viewer. One stream focused with the rest in a strip along the bottom, or a grid. Pin a tile to focus it. `?advanced=1` gives the older free form split layout.
  - `/stream_info`
   - Expects to be accessed through something like Authelia or, if you enabled it, http basic auth. It will read the username from the relevant authentication header, and create a database entry for that user, displaying the key and rtmp endpoint(s) to use, with buttons to regenerate the key and set a stream title, offline image, and go-live/offline notification settings.
  - `/stream_info/regen_key`, `/stream_info/save_settings`

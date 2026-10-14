@@ -501,3 +501,35 @@ def test_lowercase_usernames_leaves_collisions_alone(db_path):
     rakuspace.lowercase_usernames(conn)
     conn.close()
     assert _usernames(db_path) == ["Raku", "raku"]
+
+
+# --- multistream routes ---
+
+@pytest.mark.parametrize("prefix", ["", "/lite"])
+def test_multistream_renders_conference_view(client, prefix):
+    resp = client.get(prefix + "/multistream")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="menu-toggle-view"' in body
+    assert 'id="menu-toggle-edit"' not in body
+    assert f"const LIVE_BASE_URL = '{prefix}/live/';" in body
+    assert f'href="{prefix}/multistream?advanced=1"' in body
+
+
+@pytest.mark.parametrize("prefix", ["", "/lite"])
+def test_multistream_advanced_renders_split_view(client, prefix):
+    resp = client.get(prefix + "/multistream?advanced=1")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="menu-toggle-edit"' in body
+    assert 'id="menu-toggle-view"' not in body
+    assert f"const LIVE_BASE_URL = '{prefix}/live/';" in body
+    assert f'href="{prefix}/multistream"' in body
+
+
+def test_multistream_advanced_other_values_ignored(client):
+    resp = client.get("/multistream?advanced=0")
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'id="menu-toggle-view"' in body
+    assert 'id="menu-toggle-edit"' not in body

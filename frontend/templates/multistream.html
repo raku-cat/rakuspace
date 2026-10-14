@@ -10,10 +10,8 @@
 <style>
   :root {
     /* Catppuccin Macchiato, mirroring static/app.css. This page is a
-       fullscreen video layout and doesn't load app.css, so the chrome that
-       sits on top of the tiles (menu, name form, tile controls) redeclares
-       the tokens it needs to stay on the same palette as the rest of the
-       site. */
+       fullscreen video layout and doesn't load app.css, so it redeclares
+       the tokens its chrome needs. */
     --ctp-crust: #181926;
     --ctp-mantle: #1e2030;
     --ctp-base: #24273a;
@@ -47,67 +45,120 @@
     font-family: sans-serif;
   }
 
-  .layout {
+  /* --- stage: focus pane over strip, or grid --- */
+
+  .stage {
     display: flex;
-    width: 100vw;
-    height: 100vh;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
   }
 
-  /* --- video multistream area --- */
-
-  .video-pane {
+  .focus-pane {
     flex: 1 1 0;
-    height: 100%;
-    position: relative;
-    overflow: hidden;
-    min-width: 0;
-  }
-
-  #video-root {
-    width: 100%;
-    height: 100%;
-  }
-
-  .split-container {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    min-width: 0;
     min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    container-type: size;
   }
-  .split-row { flex-direction: row; }
-  .split-column { flex-direction: column; }
+  .focus-pane > .tile {
+    width: min(100cqw, calc(100cqh * 16 / 9));
+    aspect-ratio: 16 / 9;
+  }
+
+  .strip {
+    flex: 0 0 auto;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 8px 0;
+  }
+  /* max-content plus auto margins centers the row while it fits and lets
+     it scroll from the first tile once it doesn't. */
+  .strip-inner {
+    display: flex;
+    gap: 8px;
+    width: max-content;
+    margin: 0 auto;
+    padding: 0 8px;
+  }
+  .strip-inner > .tile {
+    flex: 0 0 auto;
+    height: clamp(90px, 16vh, 200px);
+    aspect-ratio: 16 / 9;
+  }
+
+  .grid-pane {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+  }
+  .grid-inner {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 8px;
+    width: var(--grid-w, 100%);
+    flex-shrink: 0;
+  }
+  .grid-inner > .tile {
+    flex: 0 0 auto;
+    width: var(--tile-w, 0);
+    height: var(--tile-h, 0);
+  }
+
+  .stage.mode-grid .focus-pane,
+  .stage.mode-grid .strip,
+  .stage.mode-focus .grid-pane,
+  .stage.single .strip {
+    display: none;
+  }
+
+  /* --- tiles --- */
 
   .tile {
     position: relative;
     overflow: hidden;
     background: var(--ctp-crust);
-    min-width: 0;
-    min-height: 0;
   }
-
   .tile iframe {
     display: block;
     width: 100%;
     height: 100%;
     border: 0;
   }
-  .tile iframe.inert { pointer-events: none; }
-
-  .tile-drag-overlay {
-    position: absolute;
-    inset: 0;
-    z-index: 10;
-    background: transparent;
+  .tile.flash {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
   }
 
-  .tile-close {
+  .tile-bar {
     position: absolute;
     top: 6px;
     left: 6px;
     z-index: 20;
+    display: flex;
+    gap: 4px;
+    opacity: 0;
+    transition: opacity 0.25s ease;
+  }
+  .tile:hover .tile-bar,
+  .tile.just-added .tile-bar,
+  .tile-bar:focus-within {
+    opacity: 1;
+  }
+  @media (hover: none) {
+    .tile-bar { opacity: 1; }
+  }
+  .tile-btn {
     width: 26px;
     height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     border: none;
     border-radius: 4px;
     background: rgba(24, 25, 38, 0.85);
@@ -115,34 +166,39 @@
     font-size: 16px;
     line-height: 1;
     cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.25s ease;
   }
-  .tile:hover .tile-close,
-  .tile-close.just-added {
-    opacity: 1;
+  .tile-btn svg {
+    width: 14px;
+    height: 14px;
   }
+  .tile-pin:hover { background: var(--ctp-surface1); color: var(--ctp-text); }
+  .tile-pin[aria-pressed="true"] { color: var(--accent); }
   .tile-close:hover { background: var(--ctp-red); color: var(--ctp-crust); }
-  body.edit-mode .tile-close { opacity: 1; }
 
-  .tile-empty {
-    width: 100%;
-    height: 100%;
+  /* --- add stream panel --- */
+
+  .add-panel {
+    position: fixed;
+    inset: 0;
+    z-index: 90;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: repeating-linear-gradient(45deg, var(--ctp-crust), var(--ctp-crust) 10px, var(--ctp-mantle) 10px, var(--ctp-mantle) 20px);
+    pointer-events: none;
   }
+  .add-panel[hidden] { display: none; }
 
   .name-form {
+    pointer-events: auto;
     display: flex;
     gap: 8px;
     align-items: center;
-    max-width: 100%;
+    max-width: calc(100vw - 32px);
     background: var(--ctp-base);
     border: 1px solid var(--ctp-surface1);
     padding: 14px;
     border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
   .name-form input {
     font-size: 14px;
@@ -166,6 +222,7 @@
     font-family: inherit;
     color: var(--ctp-text);
   }
+  .name-form button[hidden] { display: none; }
   .name-form .load-btn {
     font-weight: 600;
     color: var(--ctp-crust);
@@ -175,31 +232,6 @@
   .name-form .load-btn:hover { filter: brightness(1.08); }
   .name-form .cancel-btn { background: var(--ctp-surface1); border-color: var(--ctp-surface2); }
   .name-form .cancel-btn:hover { background: var(--ctp-surface2); }
-
-  .resizer {
-    flex: 0 0 auto;
-    background: var(--ctp-surface0);
-    z-index: 15;
-  }
-  .resizer:hover { background: var(--ctp-surface1); }
-  .resizer-row { width: 6px; cursor: col-resize; }
-  .resizer-column { height: 6px; cursor: row-resize; }
-  body.resizing { user-select: none; }
-
-  .drop-indicator {
-    position: absolute;
-    /* Catppuccin assigns lavender to active borders; the fill is the same
-       colour at low alpha so the tile underneath still shows through. */
-    background: rgba(183, 189, 248, 0.3);
-    border: 2px solid var(--ctp-lavender);
-    pointer-events: none;
-    z-index: 50;
-  }
-  .drop-left   { left: 0; top: 0; width: 50%; height: 100%; }
-  .drop-right  { right: 0; top: 0; width: 50%; height: 100%; }
-  .drop-top    { left: 0; top: 0; width: 100%; height: 50%; }
-  .drop-bottom { left: 0; bottom: 0; width: 100%; height: 50%; }
-  .drop-center { left: 12%; top: 12%; width: 76%; height: 76%; }
 
   /* --- global menu --- */
 
@@ -253,7 +285,8 @@
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   }
   .menu-wrap.open .global-menu { display: block; }
-  .global-menu button {
+  .global-menu button,
+  .global-menu a {
     display: block;
     width: 100%;
     text-align: left;
@@ -263,29 +296,44 @@
     color: var(--ctp-subtext1);
     font-family: inherit;
     font-size: 14px;
+    text-decoration: none;
     cursor: pointer;
   }
-  .global-menu button:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+  .global-menu button:hover,
+  .global-menu a:hover { background: var(--ctp-surface0); color: var(--ctp-text); }
+  .global-menu button:disabled {
+    color: var(--ctp-overlay1);
+    background: none;
+    cursor: default;
+  }
 
   .global-menu-btn:focus-visible,
   .global-menu button:focus-visible,
-  .tile-close:focus-visible,
+  .global-menu a:focus-visible,
+  .tile-btn:focus-visible,
   .name-form button:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
   }
-  .tile-close:focus-visible { opacity: 1; }
 
   @media (prefers-reduced-motion: reduce) {
-    .global-menu-btn, .tile-close { transition: none; }
+    .global-menu-btn, .tile-bar { transition: none; }
   }
 </style>
 </head>
 <body>
-<div class="layout" id="layout">
-  <div class="video-pane">
-    <div id="video-root"></div>
-  </div>
+<div class="stage mode-grid single" id="stage">
+  <div class="focus-pane" id="focus-pane"></div>
+  <div class="strip" id="strip"><div class="strip-inner" id="strip-inner"></div></div>
+  <div class="grid-pane" id="grid-pane"><div class="grid-inner" id="grid-inner"></div></div>
+</div>
+
+<div class="add-panel" id="add-panel" hidden>
+  <form class="name-form" id="add-form">
+    <input id="add-input" type="text" placeholder="Stream name" autocomplete="off" aria-label="Stream name">
+    <button type="submit" class="load-btn">Load</button>
+    <button type="button" class="cancel-btn" id="add-cancel">Cancel</button>
+  </form>
 </div>
 
 <div class="menu-wrap" id="menu-wrap">
@@ -294,493 +342,318 @@
   </button>
   <div class="global-menu" id="global-menu">
     <button id="menu-add-stream" type="button">Add stream</button>
-    <button id="menu-toggle-edit" type="button">Edit layout</button>
+    <button id="menu-toggle-view" type="button">Grid view</button>
+    <a id="menu-advanced-mode" href="{{ lite_prefix }}/multistream?advanced=1">Advanced mode</a>
     <button id="menu-reset-layout" type="button">Reset layout</button>
   </div>
 </div>
 
 <script>
 (function () {
-  // The base URL used to build each stream's iframe src: LIVE_BASE + name.
   const LIVE_BASE_URL = '{{ lite_prefix }}/live/';
+  const STORAGE_KEY = 'rakuspace-multistream-v1';
+  const GRID_GAP = 8;
+  // Lucide "pin" icon (ISC license).
+  const PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>';
 
+  const stage = document.getElementById('stage');
+  const focusPane = document.getElementById('focus-pane');
+  const stripInner = document.getElementById('strip-inner');
+  const gridPane = document.getElementById('grid-pane');
+  const gridInner = document.getElementById('grid-inner');
+  const addPanel = document.getElementById('add-panel');
+  const addForm = document.getElementById('add-form');
+  const addInput = document.getElementById('add-input');
+  const addCancel = document.getElementById('add-cancel');
+  const viewBtn = document.getElementById('menu-toggle-view');
+
+  // streams is in add order, which is also strip and grid order.
+  // focusedId null means grid view.
+  const state = { streams: [], focusedId: null, lastFocusedId: null };
   let nextId = 1;
-  function makeLeaf(size) {
-    return { type: 'leaf', id: nextId++, name: null, justAdded: false, size: size || 1 };
+
+  // Tile elements by stream id. Reused across renders so a tile is only
+  // reattached (and its iframe reloaded) when it changes container.
+  const tileCache = new Map();
+
+  function findStream(id) {
+    return state.streams.find((s) => s.id === id) || null;
   }
-  function makeSplit(direction, children, size) {
-    return { type: 'split', id: nextId++, direction, children, size: size || 1 };
-  }
-
-  const state = {
-    editMode: false,
-    root: makeSplit('row', [makeLeaf(1)]),
-  };
-
-  let dragNode = null;
-  let resizeState = null;
-
-  // Persistent cache of leaf DOM elements keyed by node id, reused across
-  // renders so that live-loaded stream iframes are never torn down and
-  // recreated (which would reload the embedded player) just because the
-  // tree got re-rendered for an unrelated reason like toggling edit mode.
-  const leafCache = new Map();
 
   // ---- persistence ----
-
-  const STORAGE_KEY = 'irc-embed-stream-layout-v1';
-
-  function serializeNode(node) {
-    if (node.type === 'leaf') {
-      return { type: 'leaf', id: node.id, name: node.name, size: node.size };
-    }
-    return {
-      type: 'split',
-      id: node.id,
-      direction: node.direction,
-      size: node.size,
-      children: node.children.map(serializeNode),
-    };
-  }
-
-  function deserializeNode(data) {
-    if (data.type === 'leaf') {
-      return { type: 'leaf', id: data.id, name: data.name ? data.name.toLowerCase() : null, justAdded: false, size: data.size || 1 };
-    }
-    return {
-      type: 'split',
-      id: data.id,
-      direction: data.direction === 'column' ? 'column' : 'row',
-      size: data.size || 1,
-      children: (data.children || []).map(deserializeNode),
-    };
-  }
-
-  function maxId(node, acc) {
-    acc = Math.max(acc, node.id || 0);
-    if (node.type === 'split') {
-      for (const c of node.children) acc = Math.max(acc, maxId(c, acc));
-    }
-    return acc;
-  }
 
   function saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
         version: 1,
-        root: serializeNode(state.root),
+        streams: state.streams,
+        focusedId: state.focusedId,
+        lastFocusedId: state.lastFocusedId,
       }));
     } catch (err) {
-      console.warn('[stream] failed to save layout to localStorage', err);
+      console.warn('[multistream] failed to save layout', err);
     }
   }
 
   function loadState() {
+    let data;
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const data = JSON.parse(raw);
-      if (!data || data.version !== 1 || !data.root) return;
-      state.root = deserializeNode(data.root);
-      nextId = maxId(state.root, 0) + 1;
+      data = JSON.parse(localStorage.getItem(STORAGE_KEY));
     } catch (err) {
-      console.warn('[stream] failed to load saved layout, starting fresh', err);
+      console.warn('[multistream] failed to load saved layout, starting fresh', err);
+      return;
     }
+    if (!data || data.version !== 1 || !Array.isArray(data.streams)) return;
+
+    const seenIds = new Set();
+    const seenNames = new Set();
+    for (const s of data.streams) {
+      if (!s || !Number.isSafeInteger(s.id) || typeof s.name !== 'string') continue;
+      const name = s.name.trim().toLowerCase();
+      if (!name || seenIds.has(s.id) || seenNames.has(name)) continue;
+      seenIds.add(s.id);
+      seenNames.add(name);
+      state.streams.push({ id: s.id, name });
+    }
+
+    state.lastFocusedId = findStream(data.lastFocusedId) ? data.lastFocusedId : null;
+    if (data.focusedId === null) {
+      state.focusedId = null;
+    } else if (findStream(data.focusedId)) {
+      state.focusedId = data.focusedId;
+    } else {
+      setFocus(state.streams.length ? state.streams[0].id : null);
+    }
+    nextId = state.streams.reduce((m, s) => Math.max(m, s.id), 0) + 1;
+  }
+
+  // ---- actions ----
+
+  function setFocus(id) {
+    state.focusedId = id;
+    if (id !== null) state.lastFocusedId = id;
+  }
+
+  // Returns true when the name was usable (added, or already present).
+  function addStream(rawName) {
+    // Stream names are case insensitive and always lowercase server side.
+    const name = rawName.trim().toLowerCase();
+    if (!name) return false;
+    const existing = state.streams.find((s) => s.name === name);
+    if (existing) {
+      flashTile(existing.id);
+      return true;
+    }
+    const stream = { id: nextId++, name };
+    const wasEmpty = state.streams.length === 0;
+    state.streams.push(stream);
+    if (wasEmpty) setFocus(stream.id);
+    render();
+    markJustAdded(stream.id);
+    const added = tileCache.get(stream.id);
+    if (added) added.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    return true;
+  }
+
+  function removeStream(id) {
+    const idx = state.streams.findIndex((s) => s.id === id);
+    if (idx === -1) return;
+    state.streams.splice(idx, 1);
+    if (state.lastFocusedId === id) state.lastFocusedId = null;
+    if (state.focusedId === id) {
+      const next = state.streams[idx] || state.streams[idx - 1] || null;
+      setFocus(next ? next.id : null);
+    }
+    const entry = tileCache.get(id);
+    if (entry) {
+      entry.el.remove();
+      tileCache.delete(id);
+    }
+    render();
+    if (state.streams.length === 0) openAddPanel();
+  }
+
+  function togglePin(id) {
+    const entry = tileCache.get(id);
+    const hadFocus = document.activeElement === (entry ? entry.pinBtn : null);
+    setFocus(state.focusedId === id ? null : id);
+    render();
+    if (hadFocus) {
+      const updated = tileCache.get(id);
+      if (updated) updated.pinBtn.focus();
+    }
+  }
+
+  function toggleView() {
+    if (state.streams.length === 0) return;
+    if (state.focusedId !== null) {
+      setFocus(null);
+    } else {
+      setFocus(findStream(state.lastFocusedId) ? state.lastFocusedId : state.streams[0].id);
+    }
+    render();
   }
 
   function resetLayout() {
     if (!confirm('Reset the stream layout? This removes all added streams.')) return;
-    leafCache.clear();
-    state.root = makeSplit('row', [makeLeaf(1)]);
+    for (const entry of tileCache.values()) entry.el.remove();
+    tileCache.clear();
+    state.streams = [];
+    state.focusedId = null;
+    state.lastFocusedId = null;
+    nextId = 1;
     render();
+    openAddPanel();
   }
 
-  // ---- tree helpers ----
+  // ---- tiles ----
 
-  function findParent(container, target) {
-    if (container.type !== 'split') return null;
-    if (container.children.includes(target)) return container;
-    for (const child of container.children) {
-      const found = findParent(child, target);
-      if (found) return found;
-    }
-    return null;
-  }
+  function getTile(stream) {
+    let entry = tileCache.get(stream.id);
+    if (entry) return entry;
 
-  function collapseIfNeeded(container) {
-    if (container === state.root) {
-      if (container.children.length === 0) {
-        container.children.push(makeLeaf(1));
-      }
-      return;
-    }
-    const parent = findParent(state.root, container);
-    if (!parent) return;
-    if (container.children.length === 0) {
-      parent.children = parent.children.filter((c) => c !== container);
-      collapseIfNeeded(parent);
-    } else if (container.children.length === 1) {
-      const only = container.children[0];
-      only.size = container.size;
-      const idx = parent.children.indexOf(container);
-      parent.children[idx] = only;
-      collapseIfNeeded(parent);
-    }
-  }
-
-  function closeLeaf(node) {
-    const parent = findParent(state.root, node);
-    if (!parent) return;
-    parent.children = parent.children.filter((c) => c !== node);
-    collapseIfNeeded(parent);
-    leafCache.delete(node.id);
-    render();
-  }
-
-  function addStream() {
-    state.root.children.forEach((c) => { c.size = 1; });
-    state.root.children.push(makeLeaf(1));
-    render();
-  }
-
-  function equalizeSiblings(container) {
-    container.children.forEach((c) => { c.size = 1; });
-  }
-
-  function performDrop(source, target, zone) {
-    const sourceParent = findParent(state.root, source);
-    if (!sourceParent) return;
-
-    sourceParent.children = sourceParent.children.filter((c) => c !== source);
-    collapseIfNeeded(sourceParent);
-
-    const targetParent = findParent(state.root, target);
-    if (!targetParent) return;
-
-    if (zone === 'center') {
-      const idx = targetParent.children.indexOf(target);
-      targetParent.children.splice(idx + 1, 0, source);
-      equalizeSiblings(targetParent);
-      return;
-    }
-
-    const axis = (zone === 'left' || zone === 'right') ? 'row' : 'column';
-    const before = (zone === 'left' || zone === 'top');
-
-    if (targetParent.direction === axis) {
-      // Inserting into a container that already splits on this axis:
-      // re-equalize all siblings rather than repeatedly halving just the
-      // target's share, which otherwise compounds into vanishingly thin
-      // panes after a few drags.
-      const idx = targetParent.children.indexOf(target);
-      targetParent.children.splice(before ? idx : idx + 1, 0, source);
-      equalizeSiblings(targetParent);
-    } else {
-      // Perpendicular split: wrap target in a new split container that
-      // takes over target's old share, and give the two new children
-      // (source and target) an even split within it.
-      const newSplit = makeSplit(axis, before ? [source, target] : [target, source], target.size);
-      source.size = 1;
-      target.size = 1;
-      const idx = targetParent.children.indexOf(target);
-      targetParent.children[idx] = newSplit;
-    }
-  }
-
-  // ---- drag to split / reorder ----
-
-  function computeDropZone(x, y) {
-    const EDGE = 0.25;
-    if (x < EDGE) return 'left';
-    if (x > 1 - EDGE) return 'right';
-    if (y < EDGE) return 'top';
-    if (y > 1 - EDGE) return 'bottom';
-    return 'center';
-  }
-
-  function clearDropIndicators() {
-    document.querySelectorAll('.drop-indicator').forEach((el) => el.remove());
-  }
-
-  function showDropIndicator(el, zone) {
-    clearDropIndicators();
-    const ind = document.createElement('div');
-    ind.className = 'drop-indicator drop-' + zone;
-    el.appendChild(ind);
-  }
-
-  function onDragStart(node, e) {
-    dragNode = node;
-    e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(node.id));
-  }
-
-  function onDragOver(node, el, e) {
-    if (!dragNode || dragNode === node) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    const rect = el.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    showDropIndicator(el, computeDropZone(x, y));
-  }
-
-  function onDragLeave(el, e) {
-    if (!el.contains(e.relatedTarget)) clearDropIndicators();
-  }
-
-  function onDrop(node, el, e) {
-    e.preventDefault();
-    clearDropIndicators();
-    if (!dragNode || dragNode === node) { dragNode = null; return; }
-    const rect = el.getBoundingClientRect();
-    const x = (e.clientX - rect.left) / rect.width;
-    const y = (e.clientY - rect.top) / rect.height;
-    performDrop(dragNode, node, computeDropZone(x, y));
-    dragNode = null;
-    render();
-  }
-
-  document.addEventListener('dragend', () => {
-    dragNode = null;
-    clearDropIndicators();
-  });
-
-  // ---- resize ----
-
-  function startResize(parent, i, aEl, bEl, e) {
-    e.preventDefault();
-    const a = parent.children[i];
-    const b = parent.children[i + 1];
-    const isRow = parent.direction === 'row';
-    const aRect = aEl.getBoundingClientRect();
-    const bRect = bEl.getBoundingClientRect();
-    const totalPx = isRow ? aRect.width + bRect.width : aRect.height + bRect.height;
-    resizeState = {
-      a, b, aEl, bEl, isRow,
-      startPos: isRow ? e.clientX : e.clientY,
-      aStartPx: isRow ? aRect.width : aRect.height,
-      totalPx,
-      totalSize: a.size + b.size,
-    };
-    document.body.classList.add('resizing');
-  }
-
-  document.addEventListener('mousemove', (e) => {
-    if (!resizeState) return;
-    const { isRow, startPos, aStartPx, totalPx, totalSize, a, b, aEl, bEl } = resizeState;
-    const pos = isRow ? e.clientX : e.clientY;
-    const delta = pos - startPos;
-    const MIN_PX = 60;
-    const newAPx = Math.min(Math.max(aStartPx + delta, MIN_PX), Math.max(totalPx - MIN_PX, MIN_PX));
-    const ratio = newAPx / totalPx;
-    a.size = totalSize * ratio;
-    b.size = totalSize * (1 - ratio);
-    aEl.style.flex = a.size + ' 1 0';
-    bEl.style.flex = b.size + ' 1 0';
-  });
-
-  document.addEventListener('mouseup', () => {
-    if (!resizeState) return;
-    resizeState = null;
-    document.body.classList.remove('resizing');
-    saveState();
-  });
-
-  // ---- rendering ----
-
-  function render() {
-    const root = document.getElementById('video-root');
-    root.innerHTML = '';
-    root.appendChild(renderNode(state.root));
-
-    document.body.classList.toggle('edit-mode', state.editMode);
-
-    document.getElementById('menu-toggle-edit').textContent = state.editMode ? 'Exit edit mode' : 'Edit layout';
-
-    saveState();
-  }
-
-  function renderNode(node) {
-    return node.type === 'leaf' ? renderLeaf(node) : renderSplit(node);
-  }
-
-  function renderSplit(node) {
-    const el = document.createElement('div');
-    el.className = 'split-container split-' + node.direction;
-    el.style.flex = node.size + ' 1 0';
-
-    const childEls = node.children.map(renderNode);
-    childEls.forEach((childEl, i) => {
-      el.appendChild(childEl);
-      if (state.editMode && i < node.children.length - 1) {
-        const bar = document.createElement('div');
-        bar.className = 'resizer resizer-' + node.direction;
-        bar.addEventListener('mousedown', (e) => startResize(node, i, childEl, childEls[i + 1], e));
-        el.appendChild(bar);
-      }
-    });
-    return el;
-  }
-
-  // Loaded stream tiles keep a single persistent DOM subtree (including the
-  // iframe) in leafCache, reused across renders via appendChild -- moving an
-  // already-attached iframe element doesn't reload it, only assigning a new
-  // .src does. This is what stops edit-mode toggles / drag-drop / resize
-  // re-renders from reloading every visible stream.
-  function computeStreamSrc(name) {
-    return LIVE_BASE_URL + encodeURIComponent(name);
-  }
-
-  function createStreamLeaf(node) {
     const el = document.createElement('div');
     el.className = 'tile';
-    el.dataset.tileId = node.id;
-    el.addEventListener('dragstart', (e) => onDragStart(node, e));
-    el.addEventListener('dragover', (e) => onDragOver(node, el, e));
-    el.addEventListener('dragleave', (e) => onDragLeave(el, e));
-    el.addEventListener('drop', (e) => onDrop(node, el, e));
+    el.dataset.streamId = stream.id;
 
     const iframe = document.createElement('iframe');
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
     iframe.allowFullscreen = true;
-    el.appendChild(iframe);
+    iframe.src = LIVE_BASE_URL + encodeURIComponent(stream.name);
+    iframe.title = stream.name;
 
-    const overlay = document.createElement('div');
-    overlay.className = 'tile-drag-overlay';
+    const bar = document.createElement('div');
+    bar.className = 'tile-bar';
+
+    const pinBtn = document.createElement('button');
+    pinBtn.type = 'button';
+    pinBtn.className = 'tile-btn tile-pin';
+    pinBtn.innerHTML = PIN_SVG;
+    pinBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      togglePin(stream.id);
+    });
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
-    closeBtn.className = 'tile-close';
+    closeBtn.className = 'tile-btn tile-close';
     closeBtn.textContent = '×';
     closeBtn.title = 'Close';
     closeBtn.setAttribute('aria-label', 'Close stream');
     closeBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      closeLeaf(node);
+      removeStream(stream.id);
     });
-    el.appendChild(closeBtn);
 
-    return { el, iframe, overlay, closeBtn, src: null };
+    bar.append(pinBtn, closeBtn);
+    el.append(iframe, bar);
+
+    entry = { el, pinBtn };
+    tileCache.set(stream.id, entry);
+    return entry;
   }
 
-  function updateStreamLeaf(entry, node) {
-    const { el, iframe, overlay, closeBtn } = entry;
-    el.style.flex = node.size + ' 1 0';
-    el.draggable = state.editMode;
-
-    const targetSrc = computeStreamSrc(node.name);
-    if (entry.src !== targetSrc) {
-      iframe.src = targetSrc;
-      entry.src = targetSrc;
-    }
-    iframe.classList.toggle('inert', state.editMode);
-
-    if (state.editMode) {
-      if (!overlay.isConnected) el.insertBefore(overlay, closeBtn);
-    } else if (overlay.isConnected) {
-      overlay.remove();
-    }
-
-    closeBtn.classList.toggle('just-added', !!node.justAdded);
+  function markJustAdded(id) {
+    const entry = tileCache.get(id);
+    if (!entry) return;
+    entry.el.classList.add('just-added');
+    setTimeout(() => entry.el.classList.remove('just-added'), 2500);
   }
 
-  function renderLeaf(node) {
-    if (node.name) {
-      let entry = leafCache.get(node.id);
-      if (!entry) {
-        entry = createStreamLeaf(node);
-        leafCache.set(node.id, entry);
+  function flashTile(id) {
+    const entry = tileCache.get(id);
+    if (!entry) return;
+    entry.el.classList.add('flash');
+    entry.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    setTimeout(() => entry.el.classList.remove('flash'), 1200);
+  }
+
+  // ---- layout ----
+
+  // Column count that gives the largest 16:9 tile for n tiles in W x H.
+  function bestGrid(n, W, H, gap) {
+    let best = { cols: 1, w: 0, h: 0 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      const maxW = (W - gap * (cols - 1)) / cols;
+      const maxH = (H - gap * (rows - 1)) / rows;
+      const w = Math.floor(Math.max(0, Math.min(maxW, maxH * 16 / 9)));
+      if (w > best.w) best = { cols, w, h: Math.floor(w * 9 / 16) };
+    }
+    return best;
+  }
+
+  function layoutGrid() {
+    const n = state.streams.length;
+    if (state.focusedId !== null || n === 0) return;
+    const cs = getComputedStyle(gridPane);
+    const rect = gridPane.getBoundingClientRect();
+    // Floor plus 1px slack so subpixel widths never force an extra wrap.
+    const W = Math.floor(rect.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) - 1;
+    const H = Math.floor(rect.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) - 1;
+    const { cols, w, h } = bestGrid(n, W, H, GRID_GAP);
+    // Pin the inner width to exactly cols tiles so wrapping matches.
+    gridInner.style.setProperty('--grid-w', (cols * w + (cols - 1) * GRID_GAP) + 'px');
+    gridInner.style.setProperty('--tile-w', w + 'px');
+    gridInner.style.setProperty('--tile-h', h + 'px');
+  }
+
+  function render() {
+    const focusMode = state.focusedId !== null;
+    stage.classList.toggle('mode-focus', focusMode);
+    stage.classList.toggle('mode-grid', !focusMode);
+    stage.classList.toggle('single', state.streams.length <= 1);
+
+    // Walk streams in add order, tracking the last tile placed in each
+    // container. A tile is only moved when it isn't already right after
+    // that one, so tiles that stay put never reload.
+    const lastIn = new Map();
+    for (const stream of state.streams) {
+      const entry = getTile(stream);
+      const focused = stream.id === state.focusedId;
+      const target = !focusMode ? gridInner : (focused ? focusPane : stripInner);
+      const prev = lastIn.get(target) || null;
+      if (entry.el.parentNode !== target || entry.el.previousElementSibling !== prev) {
+        target.insertBefore(entry.el, prev ? prev.nextSibling : target.firstChild);
       }
-      updateStreamLeaf(entry, node);
-      return entry.el;
+      lastIn.set(target, entry.el);
+
+      entry.pinBtn.setAttribute('aria-pressed', String(focused));
+      entry.pinBtn.title = focused ? 'Unpin' : 'Pin';
+      entry.pinBtn.setAttribute('aria-label', focused ? 'Unpin stream' : 'Pin stream');
     }
 
-    leafCache.delete(node.id);
-
-    const el = document.createElement('div');
-    el.className = 'tile';
-    el.dataset.tileId = node.id;
-    el.style.flex = node.size + ' 1 0';
-    el.draggable = false;
-    el.addEventListener('dragover', (e) => onDragOver(node, el, e));
-    el.addEventListener('dragleave', (e) => onDragLeave(el, e));
-    el.addEventListener('drop', (e) => onDrop(node, el, e));
-
-    const empty = document.createElement('div');
-    empty.className = 'tile-empty';
-    empty.appendChild(renderNameForm(node));
-    el.appendChild(empty);
-
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'tile-close';
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Close';
-    closeBtn.setAttribute('aria-label', 'Close stream');
-    closeBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeLeaf(node);
-    });
-    el.appendChild(closeBtn);
-
-    return el;
+    layoutGrid();
+    viewBtn.textContent = focusMode ? 'Grid view' : 'Focus view';
+    viewBtn.disabled = state.streams.length === 0;
+    saveState();
   }
 
-  function renderNameForm(node) {
-    const form = document.createElement('form');
-    form.className = 'name-form';
+  new ResizeObserver(layoutGrid).observe(gridPane);
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.placeholder = 'Stream name';
-    input.autocomplete = 'off';
-    form.appendChild(input);
+  // ---- add stream panel ----
 
-    const loadBtn = document.createElement('button');
-    loadBtn.type = 'submit';
-    loadBtn.className = 'load-btn';
-    loadBtn.textContent = 'Load';
-    form.appendChild(loadBtn);
-
-    const cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'cancel-btn';
-    cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      closeLeaf(node);
-    });
-    form.appendChild(cancelBtn);
-
-    form.addEventListener('click', (e) => e.stopPropagation());
-    form.addEventListener('submit', (e) => {
-      e.preventDefault();
-      // Stream names are case insensitive and always lowercase server side.
-      const val = input.value.trim().toLowerCase();
-      if (!val) return;
-      node.name = val;
-      node.justAdded = true;
-      render();
-      scheduleFade(node);
-    });
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') {
-        closeLeaf(node);
-      }
-    });
-
-    setTimeout(() => input.focus(), 0);
-    return form;
+  function openAddPanel() {
+    addCancel.hidden = state.streams.length === 0;
+    addInput.value = '';
+    addPanel.hidden = false;
+    setTimeout(() => addInput.focus(), 0);
   }
 
-  function scheduleFade(node) {
-    setTimeout(() => {
-      node.justAdded = false;
-      const el = document.querySelector('.tile[data-tile-id="' + node.id + '"] .tile-close');
-      if (el) el.classList.remove('just-added');
-    }, 2500);
+  function closeAddPanel() {
+    // With nothing loaded the form is the whole page, so it stays.
+    if (state.streams.length === 0) return;
+    addPanel.hidden = true;
   }
+
+  addForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    if (addStream(addInput.value)) addPanel.hidden = true;
+  });
+  addCancel.addEventListener('click', closeAddPanel);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !addPanel.hidden) closeAddPanel();
+  });
 
   // ---- global menu ----
 
@@ -795,17 +668,16 @@
     }
   });
   document.getElementById('menu-add-stream').addEventListener('click', () => {
-    addStream();
     menuWrap.classList.remove('open');
+    openAddPanel();
   });
-  document.getElementById('menu-toggle-edit').addEventListener('click', () => {
-    state.editMode = !state.editMode;
-    render();
+  viewBtn.addEventListener('click', () => {
     menuWrap.classList.remove('open');
+    toggleView();
   });
   document.getElementById('menu-reset-layout').addEventListener('click', () => {
-    resetLayout();
     menuWrap.classList.remove('open');
+    resetLayout();
   });
 
   menuWrap.classList.add('just-added');
@@ -813,6 +685,7 @@
 
   loadState();
   render();
+  if (state.streams.length === 0) openAddPanel();
 })();
 </script>
 </body>
