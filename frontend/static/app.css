@@ -108,6 +108,18 @@ header .new-badge {
   line-height: 1.4;
 }
 
+/* Narrow screens: drop the wordmark (the logo still links home) and tighten
+   the links so they fit on one row instead of overlapping the brand. */
+@media (max-width: 600px) {
+  header { padding: 0 12px; }
+  header .brand-name { display: none; }
+  header .header-links { gap: 8px; }
+  header a.login-btn,
+  header a.golive-link,
+  header a.multistream-link,
+  header button.install-btn { padding: 4px 8px; white-space: nowrap; }
+}
+
 /* --- Layout --- */
 main {
   max-width: 640px;
