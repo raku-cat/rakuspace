@@ -3,7 +3,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Streaming Info</title>
+  <title>Settings</title>
   <link rel="icon" href="{{ url_for('static', filename='logo.png') }}">
   <link rel="manifest" href="{{ url_for('static', filename='manifest.webmanifest') }}">
   <script src="{{ url_for('static', filename='pwa.js') }}" defer></script>
@@ -21,7 +21,6 @@
         <img src="{{ url_for('static', filename='logo.png') }}" alt="">
         <span class="brand-name">RakuSpace</span>
       </a>
-      <span class="page-title">Streaming Info for {{ username }}</span>
     </div>
     <a class="login-btn" href="{{ url_for('index') }}">&larr; Back to Home</a>
   </header>
@@ -57,7 +56,7 @@
     <div class="card">
       <form id="settings-form" method="post" action="{{ url_for('save_settings') }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <label for="streamtitle">Stream Title</label>
+        <label for="streamtitle">Title</label>
         <input type="text" id="streamtitle" name="streamtitle" value="{{ streamtitle }}">
 
         <label for="offline_image_url" style="margin-top: 14px;">Offline Image</label>

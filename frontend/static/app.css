@@ -65,15 +65,6 @@ header .brand img { display: block; height: 22px; width: 22px; border-radius: 5p
 header .brand-name { font-size: 0.95em; font-weight: 700; color: var(--accent); letter-spacing: 0.01em; }
 header .brand:hover .brand-name { color: var(--ctp-text); }
 
-header .page-title { font-size: 0.95em; font-weight: 600; color: var(--ctp-subtext1); }
-header .header-left .page-title {
-  padding-left: 12px;
-  border-left: 1px solid var(--ctp-surface1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 header .header-links {
   display: flex;
   align-items: center;
