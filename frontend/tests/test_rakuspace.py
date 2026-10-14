@@ -530,4 +530,6 @@ def test_multistream_advanced_renders_split_view(client, prefix):
 def test_multistream_advanced_other_values_ignored(client):
     resp = client.get("/multistream?advanced=0")
     assert resp.status_code == 200
-    assert 'id="menu-toggle-view"' in resp.get_data(as_text=True)
+    body = resp.get_data(as_text=True)
+    assert 'id="menu-toggle-view"' in body
+    assert 'id="menu-toggle-edit"' not in body

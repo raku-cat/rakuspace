@@ -150,6 +150,9 @@
   .tile-bar:focus-within {
     opacity: 1;
   }
+  @media (hover: none) {
+    .tile-bar { opacity: 1; }
+  }
   .tile-btn {
     width: 26px;
     height: 26px;
@@ -413,14 +416,14 @@
       state.streams.push({ id: s.id, name });
     }
 
+    state.lastFocusedId = findStream(data.lastFocusedId) ? data.lastFocusedId : null;
     if (data.focusedId === null) {
       state.focusedId = null;
     } else if (findStream(data.focusedId)) {
       state.focusedId = data.focusedId;
     } else {
-      state.focusedId = state.streams.length ? state.streams[0].id : null;
+      setFocus(state.streams.length ? state.streams[0].id : null);
     }
-    state.lastFocusedId = findStream(data.lastFocusedId) ? data.lastFocusedId : null;
     nextId = state.streams.reduce((m, s) => Math.max(m, s.id), 0) + 1;
   }
 
@@ -447,6 +450,8 @@
     if (wasEmpty) setFocus(stream.id);
     render();
     markJustAdded(stream.id);
+    const added = tileCache.get(stream.id);
+    if (added) added.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     return true;
   }
 
@@ -469,8 +474,14 @@
   }
 
   function togglePin(id) {
+    const entry = tileCache.get(id);
+    const hadFocus = document.activeElement === (entry ? entry.pinBtn : null);
     setFocus(state.focusedId === id ? null : id);
     render();
+    if (hadFocus) {
+      const updated = tileCache.get(id);
+      if (updated) updated.pinBtn.focus();
+    }
   }
 
   function toggleView() {
@@ -640,8 +651,8 @@
     if (addStream(addInput.value)) addPanel.hidden = true;
   });
   addCancel.addEventListener('click', closeAddPanel);
-  addForm.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') closeAddPanel();
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !addPanel.hidden) closeAddPanel();
   });
 
   // ---- global menu ----
