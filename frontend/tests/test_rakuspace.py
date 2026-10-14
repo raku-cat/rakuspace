@@ -101,28 +101,41 @@ def test_load_notify_config_ignores_garbage_json():
 # --- require_auth ---
 
 def test_require_auth_rejects_without_headers(client):
-    resp = client.get("/stream_info")
+    resp = client.get("/settings")
     assert resp.status_code == 401
 
 
 def test_require_auth_accepts_forwarded_user_header(client):
-    resp = client.get("/stream_info", headers={"X-Forwarded-User": "alice"})
+    resp = client.get("/settings", headers={"X-Forwarded-User": "alice"})
     assert resp.status_code == 200
 
 
 def test_require_auth_basicauth_disabled_ignores_basic_header(client, monkeypatch):
     monkeypatch.setitem(rakuspace.app.config, "BASICAUTH_ENABLED", "False")
-    resp = client.get("/stream_info", headers={"Authorization": "Basic YWxpY2U6cGFzcw=="})  # alice:pass
+    resp = client.get("/settings", headers={"Authorization": "Basic YWxpY2U6cGFzcw=="})  # alice:pass
     assert resp.status_code == 401
 
 
 def test_require_auth_basicauth_enabled_reads_username(client, monkeypatch):
     monkeypatch.setitem(rakuspace.app.config, "BASICAUTH_ENABLED", "True")
-    resp = client.get("/stream_info", headers={"Authorization": "Basic YWxpY2U6cGFzcw=="})  # alice:pass
+    resp = client.get("/settings", headers={"Authorization": "Basic YWxpY2U6cGFzcw=="})  # alice:pass
     assert resp.status_code == 200
 
 
 # --- basic routes ---
+
+def test_legacy_stream_info_redirects_to_settings(client):
+    resp = client.get("/stream_info")
+    assert resp.status_code == 308
+    assert resp.headers["Location"].endswith("/settings")
+
+
+def test_legacy_stream_info_subpath_redirects_with_query(client):
+    resp = client.get("/stream_info/notifications?saved=1")
+    assert resp.status_code == 308
+    assert resp.headers["Location"].endswith("/settings/notifications?saved=1")
+
+
 
 def test_index_route(client):
     resp = client.get("/")
@@ -165,11 +178,11 @@ def test_play_stream_unknown_streamer_still_renders(client):
 # --- CSRF protection ---
 
 def test_regen_key_requires_csrf_token(client):
-    client.get("/stream_info", headers={"X-Forwarded-User": "alice"})  # creates the user
+    client.get("/settings", headers={"X-Forwarded-User": "alice"})  # creates the user
     rakuspace.app.config["WTF_CSRF_ENABLED"] = True
     try:
         resp = client.post(
-            "/stream_info/regen_key",
+            "/settings/regen_key",
             headers={"X-Forwarded-User": "alice"},
         )
         assert resp.status_code == 400
@@ -182,11 +195,11 @@ def test_regen_key_succeeds_with_csrf_token(client):
     try:
         # Same flow a real browser follows: load the page carrying the
         # session cookie + embedded token, then submit it back.
-        page = client.get("/stream_info", headers={"X-Forwarded-User": "alice"}).get_data(as_text=True)
+        page = client.get("/settings", headers={"X-Forwarded-User": "alice"}).get_data(as_text=True)
         match = re.search(r'name="csrf_token" value="([^"]+)"', page)
-        assert match, "expected a csrf_token hidden field on the stream_info page"
+        assert match, "expected a csrf_token hidden field on the settings page"
         resp = client.post(
-            "/stream_info/regen_key",
+            "/settings/regen_key",
             data={"csrf_token": match.group(1)},
             headers={"X-Forwarded-User": "alice"},
         )
@@ -461,14 +474,14 @@ def test_api_check_lowercases_input(client, db_path):
 
 def test_auth_header_is_lowercased(client, db_path):
     _add_user(db_path, "raku", streamkey="thekey")
-    resp = client.get("/stream_info", headers={"X-Forwarded-User": "Raku"})
+    resp = client.get("/settings", headers={"X-Forwarded-User": "Raku"})
     assert resp.status_code == 200
     assert b"thekey" in resp.data
     assert _usernames(db_path) == ["raku"]
 
 
 def test_auth_header_new_user_stored_lowercase(client, db_path):
-    client.get("/stream_info", headers={"X-Forwarded-User": "NewPerson"})
+    client.get("/settings", headers={"X-Forwarded-User": "NewPerson"})
     assert _usernames(db_path) == ["newperson"]
 
 

@@ -24,13 +24,13 @@ The app wont do much on its own, it has the following pages:
   - Public OvenPlayer view for a given stream name, with an offline image if that user has configured one.
  - `/multistream`
   - Multi-tile stream viewer. One stream focused with the rest in a strip along the bottom, or a grid. Pin a tile to focus it. `?advanced=1` gives the older free form split layout.
- - `/stream_info`
+ - `/settings`
   - Expects to be accessed through something like Authelia or, if you enabled it, http basic auth. It will read the username from the relevant authentication header, and create a database entry for that user, displaying the key and rtmp endpoint(s) to use, with buttons to regenerate the key and set a stream title, offline image, and go-live/offline notification settings.
- - `/stream_info/regen_key`, `/stream_info/save_settings`
-  - POST-only actions used by the `/stream_info` page.
- - `/stream_info/notifications`
-  - Per-user configuration for the built-in Discord and IRC go-live/offline notifiers (as an alternative to a generic webhook URL set on `/stream_info`).
- - `/stream_info/notifications/test`
+ - `/settings/regen_key`, `/settings/save_settings`
+  - POST-only actions used by the `/settings` page.
+ - `/settings/notifications`
+  - Per-user configuration for the built-in Discord and IRC go-live/offline notifiers (as an alternative to a generic webhook URL set on `/settings`).
+ - `/settings/notifications/test`
   - POST-only action that sends a one-off test notification through the configured Discord/IRC channel without saving.
  - `/auth/ome`
   - To be used with OME's AdmissionWebhook to authenticate stream keys, see configs in [backend](https://github.com/raku-cat/rakuspace/backend) for more information on how to set this up.

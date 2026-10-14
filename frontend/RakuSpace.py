@@ -944,7 +944,18 @@ def lite_passthrough(subpath):
     return redirect("/" + subpath)
 
 
-@app.route("/stream_info")
+@app.route("/stream_info", methods=["GET", "POST"])
+@app.route("/stream_info/<path:subpath>", methods=["GET", "POST"])
+def legacy_stream_info(subpath=""):
+    # Old home of the settings pages, kept so bookmarks and history still work.
+    # 308 keeps the method, so a stale form posting here still lands.
+    target = "/settings" + ("/" + subpath if subpath else "")
+    if request.query_string:
+        target += "?" + request.query_string.decode()
+    return redirect(target, code=308)
+
+
+@app.route("/settings")
 @require_auth
 def stream_page(username):
     # In production this comes from Authelia/NGINX via REMOTE_USER header
@@ -974,14 +985,14 @@ def stream_page(username):
     )
 
 
-@app.route("/stream_info/regen_key", methods=["POST"])
+@app.route("/settings/regen_key", methods=["POST"])
 @require_auth
 def regen_key(username):
     get_or_create_userkey(username, regen=True)
     return redirect(url_for("stream_page"))
 
 
-@app.route("/stream_info/save_settings", methods=["POST"])
+@app.route("/settings/save_settings", methods=["POST"])
 @require_auth
 def save_settings(username):
     streamtitle = request.form.get("streamtitle")
@@ -1031,7 +1042,7 @@ def save_settings(username):
     return redirect(url_for("stream_page"))
 
 
-@app.route("/stream_info/notifications")
+@app.route("/settings/notifications")
 @require_auth
 def notifications_page(username):
     db = get_db()
@@ -1049,7 +1060,7 @@ def notifications_page(username):
     )
 
 
-@app.route("/stream_info/notifications", methods=["POST"])
+@app.route("/settings/notifications", methods=["POST"])
 @require_auth
 def set_notifications(username):
     cfg = _parse_notify_config(request.form)
@@ -1084,7 +1095,7 @@ def set_notifications(username):
     return redirect(url_for("notifications_page"))
 
 
-@app.route("/stream_info/notifications/test", methods=["POST"])
+@app.route("/settings/notifications/test", methods=["POST"])
 @require_auth
 def test_notification(username):
     cfg = _parse_notify_config(request.form)
