@@ -50,8 +50,8 @@
   .stage {
     display: flex;
     flex-direction: column;
-    width: 100vw;
-    height: 100vh;
+    width: 100%;
+    height: 100%;
   }
 
   .focus-pane {
@@ -102,6 +102,7 @@
     justify-content: center;
     gap: 8px;
     width: var(--grid-w, 100%);
+    flex-shrink: 0;
   }
   .grid-inner > .tile {
     flex: 0 0 auto;
@@ -404,7 +405,7 @@
     const seenIds = new Set();
     const seenNames = new Set();
     for (const s of data.streams) {
-      if (!s || !Number.isInteger(s.id) || typeof s.name !== 'string') continue;
+      if (!s || !Number.isSafeInteger(s.id) || typeof s.name !== 'string') continue;
       const name = s.name.trim().toLowerCase();
       if (!name || seenIds.has(s.id) || seenNames.has(name)) continue;
       seenIds.add(s.id);
@@ -508,6 +509,7 @@
     iframe.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
     iframe.allowFullscreen = true;
     iframe.src = LIVE_BASE_URL + encodeURIComponent(stream.name);
+    iframe.title = stream.name;
 
     const bar = document.createElement('div');
     bar.className = 'tile-bar';
@@ -551,6 +553,7 @@
     const entry = tileCache.get(id);
     if (!entry) return;
     entry.el.classList.add('flash');
+    entry.el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     setTimeout(() => entry.el.classList.remove('flash'), 1200);
   }
 
@@ -573,8 +576,10 @@
     const n = state.streams.length;
     if (state.focusedId !== null || n === 0) return;
     const cs = getComputedStyle(gridPane);
-    const W = gridPane.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
-    const H = gridPane.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    const rect = gridPane.getBoundingClientRect();
+    // Floor plus 1px slack so subpixel widths never force an extra wrap.
+    const W = Math.floor(rect.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) - 1;
+    const H = Math.floor(rect.height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom)) - 1;
     const { cols, w, h } = bestGrid(n, W, H, GRID_GAP);
     // Pin the inner width to exactly cols tiles so wrapping matches.
     gridInner.style.setProperty('--grid-w', (cols * w + (cols - 1) * GRID_GAP) + 'px');
@@ -635,7 +640,7 @@
     if (addStream(addInput.value)) addPanel.hidden = true;
   });
   addCancel.addEventListener('click', closeAddPanel);
-  addInput.addEventListener('keydown', (e) => {
+  addForm.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') closeAddPanel();
   });
 
