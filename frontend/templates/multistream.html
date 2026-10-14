@@ -330,7 +330,7 @@
 
 <div class="add-panel" id="add-panel" hidden>
   <form class="name-form" id="add-form">
-    <input id="add-input" type="text" placeholder="Stream name" autocomplete="off" aria-label="Stream name">
+    <input id="add-input" type="text" placeholder="Username" autocomplete="off" aria-label="Username">
     <button type="submit" class="load-btn">Load</button>
     <button type="button" class="cancel-btn" id="add-cancel">Cancel</button>
   </form>
@@ -436,7 +436,7 @@
 
   // Returns true when the name was usable (added, or already present).
   function addStream(rawName) {
-    // Stream names are case insensitive and always lowercase server side.
+    // Usernames are case insensitive and always lowercase server side.
     const name = rawName.trim().toLowerCase();
     if (!name) return false;
     const existing = state.streams.find((s) => s.name === name);

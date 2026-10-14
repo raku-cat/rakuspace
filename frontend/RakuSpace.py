@@ -1211,8 +1211,8 @@ def verify_webhook():
         # Any malformed path is silently ignored -- this is not an auth decision.
         # Gated on direction == "incoming" to match the "opening" branch above --
         # without it, a viewer's outgoing playback connection closing (e.g. their
-        # player reconnecting) was mistaken for the streamer's publish connection
-        # dropping, marking the stream offline while the streamer was still live.
+        # player reconnecting) was mistaken for the user's publish connection
+        # dropping, marking the stream offline while the user was still live.
         try:
             key_part = parsed_uri.path.strip('/').split('/')[-1]
             userid_str, _key = key_part.split("_", 1)

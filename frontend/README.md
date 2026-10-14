@@ -21,7 +21,7 @@ The app wont do much on its own, it has the following pages:
  - `/`
   - Displays an input field to direct you to `/live/<name>`, which will load an OvenPlayer instance that points to the stream with that name under the app specified in the config, or to `/multistream`.
  - `/live/<streamname>`
-  - Public OvenPlayer view for a given stream name, with an offline image if that streamer has configured one.
+  - Public OvenPlayer view for a given stream name, with an offline image if that user has configured one.
  - `/multistream`
   - Multi-tile stream viewer. One stream focused with the rest in a strip along the bottom, or a grid. Pin a tile to focus it. `?advanced=1` gives the older free form split layout.
  - `/stream_info`
@@ -37,7 +37,7 @@ The app wont do much on its own, it has the following pages:
  - `/api/check/<streamname>`
   - Small JSON existence check (`{"known": true/false}`) used by the frontend JS on `/`.
  - `/api/live/<streamname>/events`
-  - Server-Sent Events stream of a streamer's live/offline state, used to update player pages instantly.
+  - Server-Sent Events stream of a user's live/offline state, used to update player pages instantly.
 
 ## Running with podman
 An example podman quadlet is also provided which bind mounts user.db and the config file to a location in the host filesystem, it'll need to be edited before use, and then placed in either `~/.config/containers/systemd/` or `/etc/containers/systemd/`, after a `daemon-reload` you can then start rakuspace.service as a user or system service like any other service.

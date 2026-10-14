@@ -261,7 +261,7 @@
     // Always attempt a connection immediately on page load, regardless of
     // what the SSE live-state feed below ends up saying -- this is what
     // gets the player initialized at all, and covers the case where a
-    // streamer is already live before this page's SSE connection delivers
+    // user is already live before this page's SSE connection delivers
     // its first state. Beyond this first attempt, reconnects are driven by
     // that feed (see the "live" listener below) plus a slow backoff loop as
     // a fallback; the offline overlay itself is decided purely by the
@@ -290,7 +290,7 @@
 
     // Local reconnect loop is only a fallback for a missed/stale live signal
     // (e.g. a server restart resets the in-memory live state to "offline"
-    // for a streamer who's actually still publishing, and no fresh webhook
+    // for a user who's actually still publishing, and no fresh webhook
     // event will arrive until they reconnect) -- normally the SSE "live"
     // push below does the reconnecting instantly. Since that fallback case
     // is rare, back off each failed attempt instead of hammering OME every

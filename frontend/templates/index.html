@@ -62,7 +62,7 @@
     <div class="header-links">
       <a class="golive-link" href="/go_live">Go Live!<span class="new-badge">New!</span></a>
       <a class="multistream-link" href="{{ lite_prefix }}/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
-      <a class="login-btn" href="/stream_info">Streamer Settings</a>
+      <a class="login-btn" href="/stream_info">Settings</a>
     </div>
   </header>
 
@@ -71,7 +71,7 @@
       <h1>Watch a stream</h1>
 
       <form id="stream-form">
-        <input id="stream-input" type="text" placeholder="stream name" autocomplete="off">
+        <input id="stream-input" type="text" placeholder="username" autocomplete="off">
         <button type="submit">Watch</button>
       </form>
       <div id="stream-hint"></div>
@@ -93,12 +93,12 @@
     const recentDiv = document.getElementById("recent");
     const recentList = document.getElementById("recent-list");
 
-    // Stream names are case insensitive and always lowercase server side,
+    // Usernames are case insensitive and always lowercase server side,
     // so normalize anything typed before using it.
     function normalizeName(raw) {
       return raw.trim().toLowerCase();
     }
-    // Resolves true/false for a known/unknown streamer, null if the check failed.
+    // Resolves true/false for a known/unknown user, null if the check failed.
     async function checkStream(name) {
       try {
         const res = await fetch("/api/check/" + encodeURIComponent(name));
@@ -142,7 +142,7 @@
       renderRecent();
     });
 
-    // --- Stream name validation ---
+    // --- Username validation ---
     let debounceTimer;
     input.addEventListener("input", function() {
       const name = normalizeName(input.value);
@@ -155,10 +155,10 @@
         if (known === null) {
           hint.textContent = "";
         } else if (known) {
-          hint.textContent = "✓ known streamer";
+          hint.textContent = "✓ known user";
           hint.className = "known";
         } else {
-          hint.textContent = "✗ unknown stream name";
+          hint.textContent = "✗ unknown user";
           hint.className = "unknown";
         }
       }, 400);
@@ -169,7 +169,7 @@
       e.preventDefault();
       const name = normalizeName(input.value);
       if (!name) return;
-      // Only known streamers make it into recent streams.
+      // Only known users make it into recent streams.
       if (await checkStream(name)) saveRecent(name);
       window.location.href = LIVE_PREFIX + "/live/" + encodeURIComponent(name);
     });

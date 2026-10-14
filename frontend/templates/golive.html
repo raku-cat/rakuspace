@@ -485,7 +485,7 @@
     // screenshare picker offers (e.g. Chrome's "share tab audio" checkbox,
     // absent for a plain window/screen share) -- we just ask for it and take
     // whatever getDisplayMedia hands back. Mic is layered on top of that via
-    // the Web Audio graph below so a streamer gets both when available.
+    // the Web Audio graph below so a user gets both when available.
     async function startCasting() {
       castBtn.disabled = true;
       setStatus("Requesting screen…");
