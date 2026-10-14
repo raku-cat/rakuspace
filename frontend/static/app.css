@@ -273,9 +273,6 @@ input#streamkey.blurred { filter: blur(4.5px); cursor: pointer; }
 .event-panel { border-top: 1px dashed var(--ctp-surface1); margin-top: 14px; padding-top: 6px; }
 
 /* --- Status hints/banners --- */
-#stream-hint { font-size: 0.8em; height: 1.2em; margin-top: 6px; }
-#stream-hint.known { color: var(--ctp-green); }
-#stream-hint.unknown { color: var(--ctp-red); }
 
 .banner {
   padding: 10px 14px;

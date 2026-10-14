@@ -9,44 +9,72 @@
   <style>
     body { display: flex; flex-direction: column; }
 
-    main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 0; }
+    main { flex: 1; display: flex; align-items: center; justify-content: center; width: 100%; max-width: none; box-sizing: border-box; padding: 0 16px 10vh; }
 
-    .card { width: 340px; padding: 28px 32px; margin-bottom: 0; }
+    .launch { width: 100%; max-width: 520px; }
 
-    #stream-form { display: flex; gap: 6px; }
-    #stream-input { flex: 1; }
+    #stream-form { display: flex; align-items: center; gap: 10px; }
+    .input-wrap { position: relative; flex: 1; min-width: 0; }
+    #stream-input {
+      height: 52px;
+      padding: 0 46px 0 22px;
+      font-size: 1.15em;
+      border-radius: 26px;
+      transition: border-color 0.15s;
+    }
+    .input-wrap.known #stream-input { border-color: var(--ctp-green); }
+    .input-wrap.unknown #stream-input { border-color: var(--ctp-red); }
+    #stream-hint {
+      position: absolute;
+      right: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 1em;
+      pointer-events: none;
+    }
+    .input-wrap.known #stream-hint { color: var(--ctp-green); }
+    .input-wrap.unknown #stream-hint { color: var(--ctp-red); }
 
-    /* Recent */
+    #watch-btn {
+      flex-shrink: 0;
+      width: 52px;
+      height: 52px;
+      padding: 0;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+    }
+    #watch-btn svg { width: 18px; height: 18px; margin-left: 3px; fill: currentColor; }
+
+    /* Recently viewed */
     #recent {
-      margin-top: 20px;
-      padding-top: 16px;
-      border-top: 1px solid var(--ctp-surface1);
-    }
-    .recent-header {
       display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 8px;
+      flex-wrap: wrap;
+      align-items: baseline;
+      justify-content: center;
+      gap: 4px 10px;
+      margin-top: 18px;
+      font-size: 0.9em;
     }
-    .recent-header b { font-size: 0.85em; color: var(--ctp-subtext0); }
+    #recent .recent-label { color: var(--ctp-subtext0); }
+    #recent-list { display: contents; list-style: none; }
+    #recent-list li:not(:last-child)::after { content: "\00b7"; color: var(--ctp-overlay1); margin-left: 10px; }
+    #recent-list a { color: var(--ctp-pink); text-decoration: none; }
+    #recent-list a:hover { text-decoration: underline; }
     #clear-btn {
-      font-size: 0.75em;
-      color: var(--ctp-overlay1);
+      font-size: 0.85em;
+      color: var(--ctp-subtext0);
       background: none;
       border: none;
       cursor: pointer;
       padding: 0;
+      margin-left: 4px;
     }
-    #clear-btn:hover { color: var(--ctp-subtext0); }
+    #clear-btn:hover { color: var(--ctp-text); text-decoration: underline; background: none; }
 
-    #recent-list {
-      margin: 0;
-      padding-left: 1.1em;
-      list-style: disc;
+    @media (prefers-reduced-motion: reduce) {
+      #stream-input { transition: none; }
     }
-    #recent-list li { margin: 3px 0; font-size: 0.9em; }
-    #recent-list a { color: var(--ctp-pink); text-decoration: none; }
-    #recent-list a:hover { text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -66,19 +94,21 @@
   </header>
 
   <main>
-    <div class="card">
+    <div class="launch">
       <form id="stream-form">
-        <input id="stream-input" type="text" placeholder="username" autocomplete="off">
-        <button type="submit">Watch</button>
+        <div class="input-wrap" id="input-wrap">
+          <input id="stream-input" type="text" placeholder="Username" title="Enter a Username" aria-label="Username" autocomplete="off">
+          <span id="stream-hint" aria-live="polite"></span>
+        </div>
+        <button type="submit" id="watch-btn" title="Watch" aria-label="Watch">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 1.5v13l11-6.5z"/></svg>
+        </button>
       </form>
-      <div id="stream-hint"></div>
 
       <div id="recent" style="display:none">
-        <div class="recent-header">
-          <b>Recently Viewed</b>
-          <button id="clear-btn">clear</button>
-        </div>
+        <span class="recent-label">Recently Viewed</span>
         <ul id="recent-list"></ul>
+        <button type="button" id="clear-btn">clear</button>
       </div>
     </div>
   </main>
@@ -87,6 +117,7 @@
     const LIVE_PREFIX = "{{ lite_prefix }}";
     const input = document.getElementById("stream-input");
     const hint = document.getElementById("stream-hint");
+    const wrap = document.getElementById("input-wrap");
     const recentDiv = document.getElementById("recent");
     const recentList = document.getElementById("recent-list");
 
@@ -145,19 +176,16 @@
       const name = normalizeName(input.value);
       clearTimeout(debounceTimer);
       hint.textContent = "";
-      hint.className = "";
+      hint.removeAttribute("title");
+      wrap.className = "input-wrap";
       if (!name) return;
       debounceTimer = setTimeout(async () => {
         const known = await checkStream(name);
-        if (known === null) {
-          hint.textContent = "";
-        } else if (known) {
-          hint.textContent = "✓ known user";
-          hint.className = "known";
-        } else {
-          hint.textContent = "✗ unknown user";
-          hint.className = "unknown";
-        }
+        if (known === null) return;
+        hint.textContent = known ? "✓" : "✗";
+        hint.title = known ? "Known user" : "Unknown user";
+        hint.setAttribute("aria-label", hint.title);
+        wrap.className = "input-wrap " + (known ? "known" : "unknown");
       }, 400);
     });
 
