@@ -57,6 +57,19 @@
       height: 100%;
     }
 
+    /* Sits behind the player (negative z-index, inside .video-pane's
+       stacking context) so it only receives hover/pointer events wherever
+       the player doesn't cover -- nothing today, since OvenPlayer's own
+       wrapper fills this box, but kept in sync with the same mechanism in
+       multistream.html so any future letterboxing/gap here already reveals
+       the menu on hover too, without adding hover detection over the
+       player surface itself (which has caused control glitches before). */
+    .bg-hover {
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+    }
+
     /* --- global menu burger --- */
 
     .menu-wrap {
@@ -91,7 +104,8 @@
     .menu-wrap:hover .global-menu-btn,
     .menu-wrap.just-added .global-menu-btn,
     .menu-wrap.open .global-menu-btn,
-    .menu-wrap:focus-within .global-menu-btn {
+    .menu-wrap:focus-within .global-menu-btn,
+    body:has(.bg-hover:hover) .global-menu-btn {
       opacity: 1;
     }
 
@@ -225,6 +239,7 @@
 <body>
   <div class="layout" id="layout">
     <div class="video-pane">
+      <div class="bg-hover"></div>
       <div id="player"></div>
       <div id="offline">
         <div>

@@ -48,12 +48,29 @@
   /* --- stage: focus pane over strip, or grid --- */
 
   .stage {
+    position: relative;
     display: flex;
     flex-direction: column;
     width: 100%;
     height: 100%;
   }
 
+  /* Sits behind every tile (negative z-index, inside the .stage stacking
+     context) so it only ever receives hover/pointer events in the blank
+     background areas a tile doesn't cover -- the margins around a centered
+     grid, or the letterboxing beside a focused 16:9 tile. Those areas are
+     safe to add hover detection to, unlike the player surface itself, where
+     an overlay has caused control glitches before. */
+  .bg-hover {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+  }
+
+  /* pointer-events: none on these panes (inherited by their inner wrapper
+     and gap/padding areas) lets hover/click pass through the deadspace
+     around tiles down to .bg-hover underneath; .tile below re-enables it
+     so the actual tiles stay fully interactive. */
   .focus-pane {
     flex: 1 1 0;
     min-height: 0;
@@ -61,6 +78,7 @@
     align-items: center;
     justify-content: center;
     container-type: size;
+    pointer-events: none;
   }
   .focus-pane > .tile {
     width: min(100cqw, calc(100cqh * 16 / 9));
@@ -72,6 +90,7 @@
     overflow-x: auto;
     overflow-y: hidden;
     padding: 8px 0;
+    pointer-events: none;
   }
   /* max-content plus auto margins centers the row while it fits and lets
      it scroll from the first tile once it doesn't. */
@@ -95,6 +114,7 @@
     align-items: center;
     justify-content: center;
     padding: 8px;
+    pointer-events: none;
   }
   .grid-inner {
     display: flex;
@@ -123,6 +143,7 @@
     position: relative;
     overflow: hidden;
     background: var(--ctp-crust);
+    pointer-events: auto;
   }
   .tile iframe {
     display: block;
@@ -133,6 +154,16 @@
   .tile.flash {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
+  }
+  /* Borderless fullscreen: covers the viewport but stays below the global
+     menu (z-index 100) so that's still reachable while maximized. Placed
+     after the tile sizing rules above so it wins the specificity tie. */
+  .tile.maximized {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    width: auto;
+    height: auto;
   }
 
   .tile-bar {
@@ -174,6 +205,14 @@
   .tile-pin:hover { background: var(--ctp-surface1); color: var(--ctp-text); }
   .tile-pin[aria-pressed="true"] { color: var(--accent); }
   .tile-close:hover { background: var(--ctp-red); color: var(--ctp-crust); }
+  .tile-max:hover { background: var(--ctp-surface1); color: var(--ctp-text); }
+  /* Only on the focused tile (in focus-pane) or any grid tile -- not on
+     strip thumbnails, which are too small for it to matter. */
+  .tile-max { display: none; }
+  .focus-pane .tile-max,
+  .grid-inner .tile-max {
+    display: flex;
+  }
 
   /* --- add stream panel --- */
 
@@ -267,7 +306,8 @@
   .menu-wrap:hover .global-menu-btn,
   .menu-wrap.just-added .global-menu-btn,
   .menu-wrap.open .global-menu-btn,
-  .menu-wrap:focus-within .global-menu-btn {
+  .menu-wrap:focus-within .global-menu-btn,
+  body:has(.bg-hover:hover) .global-menu-btn {
     opacity: 1;
   }
 
@@ -323,6 +363,7 @@
 </head>
 <body>
 <div class="stage mode-grid single" id="stage">
+  <div class="bg-hover" id="bg-hover"></div>
   <div class="focus-pane" id="focus-pane"></div>
   <div class="strip" id="strip"><div class="strip-inner" id="strip-inner"></div></div>
   <div class="grid-pane" id="grid-pane"><div class="grid-inner" id="grid-inner"></div></div>
@@ -355,6 +396,9 @@
   const GRID_GAP = 8;
   // Lucide "pin" icon (ISC license).
   const PIN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" x2="12" y1="17" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"/></svg>';
+  // Lucide "maximize-2" / "minimize-2" icons (ISC license).
+  const MAXIMIZE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" x2="14" y1="3" y2="10"/><line x1="3" x2="10" y1="21" y2="14"/></svg>';
+  const MINIMIZE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 14 10 14 10 20"/><polyline points="20 10 14 10 14 4"/><line x1="14" x2="21" y1="10" y2="3"/><line x1="3" x2="10" y1="21" y2="14"/></svg>';
 
   const stage = document.getElementById('stage');
   const focusPane = document.getElementById('focus-pane');
@@ -371,6 +415,13 @@
   // focusedId null means grid view.
   const state = { streams: [], focusedId: null, lastFocusedId: null };
   let nextId = 1;
+
+  // Which tile (if any) is borderless-fullscreened. Purely an ephemeral UI
+  // state, not part of `state` and never persisted -- it's cleared any time
+  // the tile it refers to stops being one that shows the fullscreen button
+  // (see syncMaximized), so it's never possible to get stuck fullscreened
+  // with no reachable restore button.
+  let maximizedId = null;
 
   // Tile elements by stream id. Reused across renders so a tile is only
   // reattached (and its iframe reloaded) when it changes container.
@@ -534,6 +585,17 @@
       togglePin(stream.id);
     });
 
+    const maxBtn = document.createElement('button');
+    maxBtn.type = 'button';
+    maxBtn.className = 'tile-btn tile-max';
+    maxBtn.innerHTML = MAXIMIZE_SVG;
+    maxBtn.title = 'Fullscreen';
+    maxBtn.setAttribute('aria-label', 'Fill screen with this stream');
+    maxBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleMaximize(stream.id);
+    });
+
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = 'tile-btn tile-close';
@@ -545,12 +607,43 @@
       removeStream(stream.id);
     });
 
-    bar.append(pinBtn, closeBtn);
+    bar.append(pinBtn, maxBtn, closeBtn);
     el.append(iframe, bar);
 
-    entry = { el, pinBtn };
+    entry = { el, pinBtn, maxBtn };
     tileCache.set(stream.id, entry);
     return entry;
+  }
+
+  // ---- borderless fullscreen ----
+
+  function toggleMaximize(id) {
+    maximizedId = maximizedId === id ? null : id;
+    updateMaximized();
+  }
+
+  function updateMaximized() {
+    for (const [id, entry] of tileCache) {
+      const isMax = id === maximizedId;
+      entry.el.classList.toggle('maximized', isMax);
+      entry.maxBtn.innerHTML = isMax ? MINIMIZE_SVG : MAXIMIZE_SVG;
+      entry.maxBtn.title = isMax ? 'Exit fullscreen' : 'Fullscreen';
+      entry.maxBtn.setAttribute('aria-label', isMax ? 'Exit fullscreen' : 'Fill screen with this stream');
+    }
+  }
+
+  // Clears maximizedId if its tile is no longer somewhere the fullscreen
+  // button is even shown (strip view, or removed entirely) -- otherwise a
+  // layout change elsewhere (pinning a different stream, resetting layout)
+  // could leave a tile fullscreened with no visible way to exit it.
+  function syncMaximized() {
+    if (maximizedId === null) return;
+    const entry = tileCache.get(maximizedId);
+    const valid = entry && (entry.el.parentNode === gridInner || entry.el.parentNode === focusPane);
+    if (!valid) {
+      maximizedId = null;
+      updateMaximized();
+    }
   }
 
   function markJustAdded(id) {
@@ -624,6 +717,7 @@
     }
 
     layoutGrid();
+    syncMaximized();
     viewBtn.textContent = focusMode ? 'Grid view' : 'Focus view';
     viewBtn.disabled = state.streams.length === 0;
     saveState();
