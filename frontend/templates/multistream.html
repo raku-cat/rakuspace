@@ -164,6 +164,11 @@
     z-index: 50;
     width: auto;
     height: auto;
+    /* Without this, the focused tile's 16:9 aspect-ratio (set by
+       `.focus-pane > .tile`) survives onto the fixed box, making the
+       height resolve to width*9/16 instead of filling the viewport --
+       cutting off the bottom and exposing the strip underneath. */
+    aspect-ratio: auto;
   }
 
   .tile-bar {
