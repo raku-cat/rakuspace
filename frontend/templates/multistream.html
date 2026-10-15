@@ -48,7 +48,13 @@
   /* --- stage: focus pane over strip, or grid --- */
 
   .stage {
+    /* z-index (any value) is required, not just position: relative, to make
+       .stage form its own stacking context -- otherwise .bg-hover's negative
+       z-index escapes it and the element ends up stacked behind .stage
+       itself (which fully covers the area and has pointer-events: auto),
+       rather than just behind its sibling panes as intended. */
     position: relative;
+    z-index: 0;
     display: flex;
     flex-direction: column;
     width: 100%;
