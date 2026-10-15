@@ -8,6 +8,13 @@
   <link rel="manifest" href="{{ url_for('static', filename='manifest-golive.webmanifest') }}">
   <script src="{{ url_for('static', filename='pwa.js') }}" defer></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+  <script>
+    // Same API the Start casting button calls. Phone browsers don't offer it,
+    // so swap the controls for a message before anything paints.
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)) {
+      document.documentElement.classList.add("no-share");
+    }
+  </script>
   <style>
     #preview { display: none; width: 100%; height: 100%; object-fit: contain; background: #000; }
     #preview.active { display: block; }
@@ -295,6 +302,25 @@
 
       body.golive-app main.golive.centered .retro-win .retro-statusbar { flex: none; }
     }
+
+    /* ---- Unsupported browser message, shown in place of the controls ---- */
+    .retro-win .retro-unsupported { display: none; }
+    html.no-share .retro-win .retro-body,
+    html.no-share .retro-win .retro-statusbar { display: none; }
+    html.no-share .retro-win .retro-unsupported {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      margin: 10px;
+      padding: 36px 24px 32px;
+      border-radius: 6px;
+      background: var(--win-inset-bg);
+      text-align: center;
+    }
+    .retro-unsupported .warn-icon { width: 44px; height: 44px; color: var(--win-accent); margin-bottom: 4px; }
+    .retro-unsupported .warn-title { margin: 0; color: var(--win-text); font-size: 1em; line-height: 1.45; max-width: 34ch; }
+    .retro-unsupported .warn-sub { margin: 0; color: var(--win-text-dim); font-size: 0.85em; line-height: 1.45; max-width: 40ch; }
   </style>
 </head>
 <body>
@@ -357,6 +383,15 @@
       <div class="retro-titlebar">
         <svg class="icon"><use href="#icon-monitor"></use></svg>
         <span>Screenshare Control</span>
+      </div>
+      <div class="retro-unsupported bevel-in" role="alert">
+        <svg class="warn-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 3 2 20.5h20z" stroke="currentColor" fill="none" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M12 10v5" stroke="currentColor" fill="none" stroke-width="2.2" stroke-linecap="round"/>
+          <circle cx="12" cy="17.6" r="1.2" fill="currentColor"/>
+        </svg>
+        <p class="warn-title">In-browser screensharing doesn't appear to be supported in this browser, sorry!</p>
+        <p class="warn-sub">If you believe you're receiving this message in error, please reach out to raku.</p>
       </div>
       <div class="retro-body">
         <div id="preview-wrap" class="retro-preview bevel-in">
