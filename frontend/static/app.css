@@ -73,7 +73,6 @@ header .header-links {
 
 header a.login-btn,
 header a.golive-link,
-header a.multistream-link,
 header button.install-btn {
   position: relative;
   font-size: 0.8em;
@@ -85,7 +84,6 @@ header button.install-btn {
 }
 header a.login-btn:hover,
 header a.golive-link:hover,
-header a.multistream-link:hover,
 header button.install-btn:hover { color: var(--ctp-text); border-color: var(--ctp-surface2); }
 
 header button.install-btn {
@@ -116,7 +114,6 @@ header .new-badge {
   header .header-links { gap: 8px; }
   header a.login-btn,
   header a.golive-link,
-  header a.multistream-link,
   header button.install-btn { padding: 4px 8px; white-space: nowrap; }
 }
 

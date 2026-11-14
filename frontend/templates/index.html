@@ -47,6 +47,21 @@
     }
     #watch-btn svg { width: 18px; height: 18px; margin-left: 3px; fill: currentColor; }
 
+    #multistream-btn {
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 18px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--ctp-surface1);
+      color: var(--ctp-text);
+      border: 1px solid var(--ctp-surface2);
+      text-decoration: none;
+    }
+    #multistream-btn:hover { background: var(--ctp-surface2); }
+    #multistream-btn svg { width: 18px; height: 18px; fill: currentColor; }
+
     /* Recently viewed */
     #recent {
       display: flex;
@@ -89,13 +104,15 @@
     </div>
     <div class="header-links">
       <a class="golive-link" href="/go_live">Go Live!<span class="new-badge">New!</span></a>
-      <a class="multistream-link" href="{{ lite_prefix }}/multistream">Multi-stream viewer<span class="new-badge">New!</span></a>
       <a class="login-btn" href="{{ url_for('stream_page') }}">User Settings</a>
     </div>
   </header>
 
   <main>
     <div class="launch">
+      <a id="multistream-btn" href="{{ lite_prefix }}/multistream" title="Multi-stream viewer" aria-label="Multi-stream viewer">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+      </a>
       <form id="stream-form">
         <div class="input-wrap" id="input-wrap">
           <input id="stream-input" type="text" placeholder="Username" title="Enter a Username" aria-label="Username" autocomplete="off">
