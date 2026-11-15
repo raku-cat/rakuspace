@@ -48,19 +48,24 @@
     #watch-btn svg { width: 18px; height: 18px; margin-left: 3px; fill: currentColor; }
 
     #multistream-btn {
-      width: 52px;
-      height: 52px;
-      margin: 0 auto 18px;
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 20px;
       border-radius: 50%;
-      display: grid;
-      place-items: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      font-size: 0.8em;
+      font-weight: 600;
       background: var(--ctp-surface1);
       color: var(--ctp-text);
       border: 1px solid var(--ctp-surface2);
       text-decoration: none;
     }
     #multistream-btn:hover { background: var(--ctp-surface2); }
-    #multistream-btn svg { width: 18px; height: 18px; fill: currentColor; }
+    #multistream-btn svg { width: 26px; height: 26px; fill: currentColor; }
 
     /* Recently viewed */
     #recent {
@@ -110,8 +115,9 @@
 
   <main>
     <div class="launch">
-      <a id="multistream-btn" href="{{ lite_prefix }}/multistream" title="Multi-stream viewer" aria-label="Multi-stream viewer">
+      <a id="multistream-btn" href="{{ lite_prefix }}/multistream" title="Multi-stream viewer">
         <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="1" y="1" width="6" height="6" rx="1"/><rect x="9" y="1" width="6" height="6" rx="1"/><rect x="1" y="9" width="6" height="6" rx="1"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+        <span>Multi-stream</span>
       </a>
       <form id="stream-form">
         <div class="input-wrap" id="input-wrap">
